@@ -1,0 +1,298 @@
+#!/bin/sh
+
+############################################################################
+#                                                                          #
+#                       addit: Adds a new package                          #
+#                                                                          #
+############################################################################
+
+#
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 2 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+#  Copyright (c) 2011 Sercan Arslan <arslanserc@gmail.com>
+#
+
+. /etc/init.d/tc-functions
+
+TET_ROOT="$(dirname $0)/.."
+
+if [ -f "$TET_ROOT/etc/tet.conf" ]; then
+     . "$TET_ROOT/etc/tet.conf"
+else
+     echo "${RED}${THIS}: default configuration file not found!${NORMAL}"
+     exit 1
+fi
+
+if [ -f "$HOME/.config/tet.conf" ]; then
+     . "$HOME/.config/tet.conf"
+else
+    echo "${RED}${THIS}: user configuration file not found!${NORMAL}"
+    exit 1
+fi
+
+print_usage(){
+
+   cat << EOF
+${RED}Usage:${NORMAL}
+
+      ${GREEN}addit --package=<package> --version=<version> --extensions=<extensions> --group-dir=<group-dir>
+${BLUE}
+      where;
+             ${GREEN}<package>${BLUE} is the package name.
+             ${GREEN}<version>${BLUE} is the version in numbers, svn, git, or any other type supported.
+             ${GREEN}<extensions>${BLUE} is the set of extensions, default is package name.
+             ${GREEN}<group-dir>${BLUE} is the group directory where the package directory will be created in, default is packages root directory.
+${NORMAL}
+EOF
+
+}
+
+ARG="$1"
+while [ -n "$ARG" ]
+do
+    case "$ARG" in
+           --package=*) PACKAGE=${ARG#--package=} ;;
+           --version=*) VERSION=${ARG#--version=} ;;
+           --extensions=*) EXTENSIONS=${ARG#--extensions=} ;;
+           --group-dir=*) GROUP_DIR=${ARG#--group-dir=} ;;
+           *) print_usage; exit 1 ;;
+    esac
+    shift
+    ARG="$1"
+done
+
+if [ -z "$PACKAGE" -o -z "$VERSION" ]; then
+     print_usage
+     exit 1
+fi
+
+if [ -z "$EXTENSIONS" ]; then
+     EXTENSIONS=$PACKAGE
+fi
+
+if [ -z "$GROUP_DIR" ]; then
+     GROUP_DIR=.
+fi
+
+if [ -f "$TET_ROOT/share/tet/functions.sh" ]; then
+     [ -d "$TET_PACKAGES/$GROUP_DIR/$PACKAGE" ] || mkdir -p "$TET_PACKAGES/$GROUP_DIR/$PACKAGE"
+     cd "$TET_PACKAGES/$GROUP_DIR/$PACKAGE"
+
+     . "$TET_ROOT/share/tet/functions.sh"
+else
+     echo "${RED}$(basename $0):${BLUE} tc-ext-tools functions file not found!${NORMAL}"
+     exit 1
+fi
+
+echo -e "${MESSAGE_COLOR}Adding the package with parameters:"
+echo -e "\n\t${MESSAGE_COLOR}PACKAGE = ${WARNING_COLOR}$PACKAGE"
+echo -e "\t${MESSAGE_COLOR}VERSION = ${WARNING_COLOR}$VERSION"
+echo -e "\t${MESSAGE_COLOR}EXTENSIONS = ${WARNING_COLOR}$EXTENSIONS"
+echo -e "\t${MESSAGE_COLOR}GROUP_DIR = ${WARNING_COLOR}$GROUP_DIR"
+echo -e "${NORMAL}"
+
+if [ -f "$PACKAGE_COMMON" ]; then
+   echo "${ERROR_COLOR}This package already exists.${NORMAL}"
+   echo "${WARNING_COLOR}If you continue, existing files will be overwritten.${NORMAL}"
+   echo "${MESSAGE_COLOR}Would you like you continue ? ${MESSAGE_COLOR_H}[y|yes or n|no]${NORMAL}"
+   read ans
+   case "$ans" in
+        y|yes)
+          echo "${MESSAGE_COLOR}You agreed to continue, the files will be overwritten.${NORMAL}"
+          ;;
+        n|no)
+          echo "${MESSAGE_COLOR}Farewell!${NORMAL}"
+          exit 0
+          ;;
+        *)
+          echo "${ERROR_COLOR}I don't understand what you are saying!${NORMAL}"
+          exit 1
+          ;;
+   esac
+fi
+
+this_main() {
+
+   echo "---------------------------------------------------------------"
+   echo ""
+   echo "Creating the package $PACKAGE files and directories ..."
+   echo ""
+   echo "---------------------------------------------------------------"
+
+   echo "Cleaning the package extensions directory"
+   [ -d "$PACKAGE_EXTENSIONS" ] && rm -rf "$PACKAGE_EXTENSIONS"
+   mkdir -p "$PACKAGE_EXTENSIONS" || return 1
+
+   echo "Creating the package common file"
+   if [ "$VERSION" = "svn" ]; then
+
+        cat > "$PACKAGE_COMMON" << _EOF
+PACKAGE="$PACKAGE"
+VERSION="svn${_DATE}"
+SOURCE="svn::"
+BUILD_DEPENDS=""
+
+DESCRIPTION="A brief description of package."
+AUTHOR="authors of package"
+SITE="http://www.package.com"
+COPYING="GPL-2"
+MAINTAINERS="$PACKAGE_MAINTAINER"
+TAGS=""
+COMMENTS="---"
+CHANGELOG="---"
+CURRENT="First Version"
+_EOF
+
+        [ "$?" -gt 0 ] && return 1
+
+   elif [ "$VERSION" = "git" ]; then
+
+        cat > "$PACKAGE_COMMON" << _EOF
+PACKAGE="${PACKAGE}"
+VERSION="git${_DATE}"
+SOURCE="git::"
+BUILD_DEPENDS=""
+
+DESCRIPTION="A brief description of package."
+AUTHOR="authors of package"
+SITE="http://www.package.com"
+COPYING="GPL-2"
+MAINTAINERS="$PACKAGE_MAINTAINER"
+TAGS=""
+COMMENTS="---"
+CHANGELOG="---"
+CURRENT="First Version"
+_EOF
+
+        [ "$?" -gt 0 ] && return 1
+
+   else
+
+        cat > "$PACKAGE_COMMON" << _EOF
+PACKAGE="$PACKAGE"
+VERSION="$VERSION"
+SOURCE=""
+BUILD_DEPENDS=""
+
+DESCRIPTION="A brief description of package."
+AUTHOR="authors of package"
+SITE="http://www.package.com"
+COPYING="GPL-2"
+MAINTAINERS="$PACKAGE_MAINTAINER"
+TAGS=""
+COMMENTS="---"
+CHANGELOG="---"
+CURRENT="First Version"
+_EOF
+
+        [ "$?" -gt 0 ] && return 1
+
+   fi
+
+   echo "Installing the package build rules file"
+   install -m 644 "$TET_ROOT/share/tet/build.sample" "$PACKAGE_BUILD" || return 1
+
+   echo "Creating the package extensions directory"
+   mkdir -p "$PACKAGE_EXTENSIONS" || return 1
+
+   echo "Creating the package files list"
+   touch "$PACKAGE_EXTENSIONS/list" || return 1
+
+   echo "Creating the package extensions' files (install, dep, common and tce.installed)"
+   for EXTENSION in $EXTENSIONS
+   do
+       mkdir -p "$PACKAGE_EXTENSIONS/$EXTENSION" || return 1
+
+       touch "$PACKAGE_EXTENSIONS/$EXTENSION/install" || return 1
+       touch "$PACKAGE_EXTENSIONS/$EXTENSION/dep" || return 1
+
+       if [ "${EXTENSION%-locale}" != "$EXTENSION" ]; then
+          echo "${EXTENSION%-locale}.tcz" > "$PACKAGE_EXTENSIONS/$EXTENSION/dep" || return 1
+          echo "$TET_PREFIX/share/locale" > "$PACKAGE_EXTENSIONS/$EXTENSION/install" || return 1
+       elif [ "${EXTENSION%-dev}" != "$EXTENSION" ]; then
+          echo "${EXTENSION%-dev}.tcz" > "$PACKAGE_EXTENSIONS/$EXTENSION/dep" || return 1
+          echo "$TET_PREFIX/include" > "$PACKAGE_EXTENSIONS/$EXTENSION/install" || return 1
+          echo "$TET_PREFIX/lib/pkgconfig" >> "$PACKAGE_EXTENSIONS/$EXTENSION/install" || return 1
+          echo "$TET_PREFIX/lib/*.so" >> "$PACKAGE_EXTENSIONS/$EXTENSION/install" || return 1
+          echo "$TET_PREFIX/lib/*.a" >> "$PACKAGE_EXTENSIONS/$EXTENSION/install" || return 1
+          echo "$TET_PREFIX/lib/*.la" >> "$PACKAGE_EXTENSIONS/$EXTENSION/install" || return 1
+       elif [ "${EXTENSION%-python}" != "$EXTENSION" ]; then
+          echo "${EXTENSION%-python}.tcz" > "$PACKAGE_EXTENSIONS/$EXTENSION/dep" || return 1
+          echo "$TET_PREFIX/lib/python*" > "$PACKAGE_EXTENSIONS/$EXTENSION/install" || return 1
+       elif [ "${EXTENSION%-gir}" != "$EXTENSION" ]; then
+          echo "${EXTENSION%-gir}.tcz" > "$PACKAGE_EXTENSIONS/$EXTENSION/dep" || return 1
+          echo "$TET_PREFIX/lib/girepository-1.0" > "$PACKAGE_EXTENSIONS/$EXTENSION/install" || return 1
+       fi
+
+       HAS_DEV="$(echo $EXTENSIONS | grep ${EXTENSION}-dev)"
+       HAS_LOCALE="$(echo $EXTENSIONS | grep ${EXTENSION}-locale)"
+       HAS_PYTHON="$(echo $EXTENSIONS | grep ${EXTENSION}-python)"
+       HAS_GIR="$(echo $EXTENSIONS | grep ${EXTENSION}-gir)"
+
+       if [ -n "$HAS_LOCALE" ] || [ -n "$HAS_DEV" ] ||
+          [ -n "$HAS_PYTHON" ] || [ -n "$HAS_GIR" ]; then
+          echo "$TET_PREFIX" > "$PACKAGE_EXTENSIONS/$EXTENSION/install" || return 1
+       fi
+
+       if [ -n "$HAS_LOCALE" ]; then
+          echo "x-$TET_PREFIX/share/locale" >> "$PACKAGE_EXTENSIONS/$EXTENSION/install" || return 1
+       fi
+
+       if [ -n "$HAS_DEV" ]; then
+          echo "x-$TET_PREFIX/include" >> "$PACKAGE_EXTENSIONS/$EXTENSION/install" || return 1
+          echo "x-$TET_PREFIX/lib/pkgconfig" >> "$PACKAGE_EXTENSIONS/$EXTENSION/install" || return 1
+          echo "x-$TET_PREFIX/lib/*.so" >> "$PACKAGE_EXTENSIONS/$EXTENSION/install" || return 1
+          echo "x-$TET_PREFIX/lib/*.a" >> "$PACKAGE_EXTENSIONS/$EXTENSION/install" || return 1
+          echo "x-$TET_PREFIX/lib/*.la" >> "$PACKAGE_EXTENSIONS/$EXTENSION/install" || return 1
+       fi
+
+       if [ -n "$HAS_PYTHON" ]; then
+          echo "x-$TET_PREFIX/lib/python*" >> "$PACKAGE_EXTENSIONS/$EXTENSION/install" || return 1
+       fi
+
+       if [ -n "$HAS_GIR" ]; then
+          echo "x-$TET_PREFIX/lib/girepository-1.0" >> "$PACKAGE_EXTENSIONS/$EXTENSION/install" || return 1
+          echo "x-$TET_PREFIX/share/gir-1.0" >> "$PACKAGE_EXTENSIONS/$EXTENSION/install" || return 1
+       fi
+
+       if [ -n "$HAS_GIR" -a -n "$HAS_DEV" ]; then
+          echo "$TET_PREFIX/share/gir-1.0" >> "$PACKAGE_EXTENSIONS/${EXTENSION}-dev/install" || return 1
+       elif [ -n "$HAS_GIR" -a -z "$HAS_DEV" ]; then
+          echo "$TET_PREFIX/share/gir-1.0" >> "$PACKAGE_EXTENSIONS/${EXTENSION}-gir/install" || return 1
+       fi
+   done
+
+   echo "---------------------------------------------------------------"
+   echo ""
+   echo "Created the package $PACKAGE files and directories successfully."
+   echo ""
+   echo "---------------------------------------------------------------"
+
+   return 0
+
+}
+
+echo -e "${MESSAGE_COLOR}Adding the package ${MESSAGE_COLOR_H}$PACKAGE${MESSAGE_COLOR} ... ${NORMAL}\c"
+this_main > /tmp/addit.log 2>&1
+if [ "$?" -gt 0 ]; then
+     echo "${ERROR_COLOR}failed!${NORMAL}"
+     echo "${WARNING_COLOR}See /tmp/addit.log for details.${NORMAL}"
+     exit 1
+fi
+echo "${MESSAGE_COLOR_H}successful!${NORMAL}"
+
+echo "${WARNING_COLOR}Please don't forget to run ${WARNING_COLOR_H}update-tet-database${WARNING_COLOR} at least once after adding a new package.${NORMAL}"
+
+exit 0
+

@@ -1,0 +1,132 @@
+#!/bin/sh
+
+############################################################################
+#                                                                          #
+#                   patchit: Patches the package source                    #
+#                                                                          #
+############################################################################
+
+#
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 2 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+#  Copyright (c) 2011 Sercan Arslan <arslanserc@gmail.com>
+#
+
+. /etc/init.d/tc-functions
+
+TET_ROOT="$(dirname $0)/.."
+
+if [ -f "$TET_ROOT/share/tet/functions.sh" ]; then
+     . "$TET_ROOT/share/tet/functions.sh"
+else
+     echo "${RED}$(basename $0):${BLUE} tc-ext-tools functions file not found!${NORMAL}"
+     exit 1
+fi
+
+if [ -n "$HAVE_TET_UNPACK" -a ! -f "$PACKAGE_UNPACK_STAMP" ]; then
+     echo "${ERROR_COLOR}You must unpack it first!${NORMAL}"
+     exit 1
+fi
+
+this_main() {
+
+   echo "---------------------------------------------------------------"
+   echo ""
+   echo "Patching the package $PACKAGE ..."
+   echo ""
+   echo "---------------------------------------------------------------"
+
+   PATCHES=
+
+   echo -e "Checking if the package patches series file exists ... \c"
+   if [ -f "$PACKAGE_PATCHES/series" ]; then
+        echo "yes"
+        PATCHES=$(cat "$PACKAGE_PATCHES/series" | grep -v '^#')
+   else
+        echo "no"
+           echo -e "Checking if the package patches directory exists ... \c"
+        if [ -d "$PACKAGE_PATCHES" ]; then
+             echo "yes"
+             PATCHES=$(ls "$PACKAGE_PATCHES")
+        else
+             echo "no"
+        fi
+   fi
+
+   if [ -n "$PATCHES" ]; then
+        echo "---------------------------------------------------------------"
+        echo "Patches found, applying patches ..."
+        echo "---------------------------------------------------------------"
+        for PATCH in $PATCHES
+        do
+           echo "---------------------------------------------------------------"
+           echo "Processing the patch $PATCH"
+           echo "---------------------------------------------------------------"
+
+           if [ ! -f "$PACKAGE_PATCHES/$PATCH" ]; then
+                echo "Skipping the patch $PATCH because it is not a file!"
+                continue
+           fi
+
+           echo -e "Detecting the patch level ... \c"
+           PATCH_LEVEL=1
+           for FILE in $(cat $PACKAGE_PATCHES/$PATCH | grep -e "---" -e "+++" | cut -f2 -d" "; cat $PACKAGE_PATCHES/$PATCH | grep -e "---" -e "+++" | cut -f2 -d" " | cut -f1 -s)
+           do
+               if [ -f "$PACKAGE_SOURCE_TOPDIR/$FILE" ]; then
+                    PATCH_LEVEL=0
+                    break
+               elif [ -f "$PACKAGE_SOURCE_TOPDIR/${FILE#*/}" ]; then
+                    PATCH_LEVEL=1
+                    break
+               elif [ -f "$PACKAGE_SOURCE_TOPDIR/${FILE#*/*/}" ]; then
+                    PATCH_LEVEL=2
+                    break
+               fi
+           done
+
+           echo "Applying the patch $PATCH with patch level $PATCH_LEVEL"
+           patch --directory="$PACKAGE_SOURCE_TOPDIR" -Np$PATCH_LEVEL -i "$PACKAGE_PATCHES/$PATCH" || return 1
+        done
+   else
+        echo "---------------------------------------------------------------"
+        echo "There is no patch available for the package $PACKAGE"
+        echo "---------------------------------------------------------------"
+        return 0
+   fi
+
+   echo "---------------------------------------------------------------"
+   echo ""
+   echo "Patched the package $PACKAGE successfully."
+   echo ""
+   echo "---------------------------------------------------------------"
+
+   return 0
+
+}
+
+[ -f "$PACKAGE_PATCH_STAMP" ] && sudo rm -f "$PACKAGE_PATCH_STAMP"
+
+echo -e "${MESSAGE_COLOR}Patching the package ${MESSAGE_COLOR_H}$PACKAGE${MESSAGE_COLOR} source ... ${NORMAL}\c"
+this_main > "$PACKAGE_MESSAGE_LOG" 2>&1
+if [ "$?" -gt 0 ]; then
+     echo "${ERROR_COLOR}failed!${NORMAL}"
+     echo "${WARNING_COLOR}For details: ${WARNING_COLOR_H}buildit --print message${NORMAL}"
+     exit 1
+fi
+echo "${MESSAGE_COLOR_H}successful!${NORMAL}"
+
+touch "$PACKAGE_PATCH_STAMP"
+
+exit 0
+

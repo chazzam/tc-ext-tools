@@ -1,0 +1,131 @@
+#!/bin/sh
+
+############################################################################
+#                                                                          #
+#              loadit: Loads the package build dependencies                #
+#                                                                          #
+############################################################################
+
+#
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 2 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+#  Copyright (c) 2011 Sercan Arslan <arslanserc@gmail.com>
+#
+
+. /etc/init.d/tc-functions
+
+TET_ROOT="$(dirname $0)/.."
+
+if [ -f "$TET_ROOT/share/tet/functions.sh" ]; then
+        . "$TET_ROOT/share/tet/functions.sh"
+else
+        echo "${RED}$(basename $0):${BLUE} tc-ext-tools functions file not found!${NORMAL}"
+        exit 1
+fi
+
+this_load() {
+
+   COMMAND="${EXTENSION%%::*}"
+   if [ "$COMMAND" = "$EXTENSION" ]; then
+        COMMAND=""
+   else
+        EXTENSION="${EXTENSION#*::}"
+   fi
+
+   EXTENSION_TCZ="${EXTENSION%.tcz}.tcz"
+   EXTENSION_NAME="${EXTENSION_TCZ%.tcz}"
+
+   echo -e "Checking if the extension $EXTENSION_NAME is installed ... \c"
+   if [ -e "/usr/local/tce.installed/$EXTENSION_NAME" ]; then
+        echo "yes"
+        if [ "$COMMAND" = "cp2fs" -a -d "$TCLOOP/$EXTENSION_NAME" ]; then
+             echo "Warning! cp2fs command issued for the extension $EXTENSION_NAME but it is mounted already."
+        fi
+        return 0
+   else
+        echo "no"
+   fi
+
+   echo -e "Checking if the extension $EXTENSION_NAME exists ... \c"
+   if [ -f "$TCEDIR/optional/$EXTENSION_TCZ" ]; then
+        echo "yes"
+   else
+        echo "no"
+        echo "Downloading the extension $EXTENSION_NAME"
+        tce-load -w "$EXTENSION_TCZ" || return 1
+   fi
+
+   echo "Loading the extension $EXTENSION_NAME"
+   case "$COMMAND" in
+       cp2fs) tce-load -i -c "$EXTENSION_TCZ" || return 1 ;;
+       *) tce-load -i "$EXTENSION_TCZ" || return 1 ;;
+   esac
+
+   return 0
+
+}
+
+this_main() {
+
+   echo "---------------------------------------------------------------"
+   echo ""
+   echo "Loading the package $PACKAGE build dependencies ..."
+   echo ""
+   echo "---------------------------------------------------------------"
+
+   for EXTENSION in $PACKAGE_BUILD_DEPENDS
+   do
+       if [ -n "$EXTENSION" ] && [ "${EXTENSION#\#}" = "$EXTENSION" ]; then
+            echo "---------------------------------------------------------------"
+            echo "Loading the package build dependency $EXTENSION"
+            echo "---------------------------------------------------------------"
+            this_load
+            if [ "$?" -gt 0 ]; then
+                 echo "---------------------------------------------------------------"
+                 echo "Error! Loading the package build dependency $EXTENSION failed."
+                 echo "---------------------------------------------------------------"
+                 return 1
+            else
+                 echo "---------------------------------------------------------------"
+                 echo "Loading the package build dependency $EXTENSION successful."
+                 echo "---------------------------------------------------------------"
+            fi
+       fi
+   done
+
+   echo "---------------------------------------------------------------"
+   echo ""
+   echo "Loaded the package $PACKAGE build dependencies successfully."
+   echo ""
+   echo "---------------------------------------------------------------"
+
+   return 0
+
+}
+
+[ -f "$PACKAGE_LOAD_STAMP" ] && sudo rm -f "$PACKAGE_LOAD_STAMP"
+
+echo -e "${MESSAGE_COLOR}Loading the package ${MESSAGE_COLOR_H}$PACKAGE${MESSAGE_COLOR} build dependencies ... ${NORMAL}\c"
+this_main > "$PACKAGE_MESSAGE_LOG" 2>&1
+if [ "$?" -gt 0 ]; then
+     echo "${ERROR_COLOR}failed!${NORMAL}"
+     echo "${WARNING_COLOR}For details: ${WARNING_COLOR_H}buildit --print message${NORMAL}"
+     exit 1
+fi
+echo "${MESSAGE_COLOR_H}successful!${NORMAL}"
+
+touch "$PACKAGE_LOAD_STAMP"
+
+exit 0
+

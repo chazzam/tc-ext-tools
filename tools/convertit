@@ -1,0 +1,147 @@
+#!/bin/sh
+
+############################################################################
+#                                                                          #
+#     convertit: Converts the package source to xz compressed tarball      #
+#                                                                          #
+############################################################################
+
+#
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 2 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+#  Copyright (c) 2011 Sercan Arslan <arslanserc@gmail.com>
+#
+
+. /etc/init.d/tc-functions
+
+TET_ROOT="$(dirname $0)/.."
+
+if [ -f "$TET_ROOT/share/tet/functions.sh" ]; then
+     . "$TET_ROOT/share/tet/functions.sh"
+else
+     echo "${RED}$(basename $0):${BLUE} tc-ext-tools functions file not found!${NORMAL}"
+     exit 1
+fi
+
+if [ -n "$HAVE_TET_DOWNLOAD" -a ! -f "$PACKAGE_DOWNLOAD_STAMP" ]; then
+     echo "${ERROR_COLOR}You must download it first!${NORMAL}"
+     exit 1
+fi
+
+this_main() {
+
+   echo "---------------------------------------------------------------"
+   echo ""
+   echo "Converting the package $PACKAGE source ..."
+   echo ""
+   echo "---------------------------------------------------------------"
+
+   echo "Cleaning the package src temporary directory"
+   [ -d "$PACKAGE_SRC_TEMP" ] && sudo rm -rf "$PACKAGE_SRC_TEMP"
+   mkdir -p "$PACKAGE_SRC_TEMP" || return 1
+
+   echo "Original source is $PACKAGE_SOURCE_NAME of type $PACKAGE_SOURCE_TYPE"
+   echo "Converted source is $PACKAGE_SOURCE_NAME_CONV of type tarxz"
+
+   if [ "$PACKAGE_SOURCE_TYPE" = "tarbz2" ]; then
+        echo "Decompressing the package source using bzip2"
+        bzip2 -d -c "$PACKAGE_SOURCE_ORIG" > "$PACKAGE_SRC_TEMP/${PACKAGE_SOURCE_NAME%.bz2}" || return 1
+
+        echo "Compressing the package source using xz"
+        xz "$PACKAGE_SRC_TEMP/${PACKAGE_SOURCE_NAME%.bz2}" || return 1
+
+        echo "Moving the converted source to the package source directory"
+        mv -f "$PACKAGE_SRC_TEMP/${PACKAGE_SOURCE_NAME%.bz2}.xz" "$_PACKAGE_SRC" || return 1
+   elif [ "$PACKAGE_SOURCE_TYPE" = "targz" ]; then
+        echo "Decompressing the package source using gzip"
+        gzip -d -c "$PACKAGE_SOURCE_ORIG" > "$PACKAGE_SRC_TEMP/${PACKAGE_SOURCE_NAME%.gz}" || return 1
+
+        echo "Compressing the package source using xz"
+        xz "$PACKAGE_SRC_TEMP/${PACKAGE_SOURCE_NAME%.gz}" || return 1
+
+        echo "Moving the converted source to the package source directory"
+        mv -f "$PACKAGE_SRC_TEMP/${PACKAGE_SOURCE_NAME%.gz}.xz" "$_PACKAGE_SRC" || return 1
+   elif [ "$PACKAGE_SOURCE_TYPE" = "tgz" ]; then
+        echo "Decompressing the package source using gzip"
+        gzip -d -c "$PACKAGE_SOURCE_ORIG" > "$PACKAGE_SRC_TEMP/${PACKAGE_SOURCE_NAME%.tgz}.tar" || return 1
+
+        echo "Compressing the package source using xz"
+        xz "$PACKAGE_SRC_TEMP/${PACKAGE_SOURCE_NAME%.tgz}.tar" || return 1
+
+        echo "Moving the converted source to the package source directory"
+        mv -f "$PACKAGE_SRC_TEMP/${PACKAGE_SOURCE_NAME%.tgz}.tar.xz" "$_PACKAGE_SRC" || return 1
+   elif [ "$PACKAGE_SOURCE_TYPE" = "tbz2" ]; then
+        echo "Decompressing the package source using bzip2"
+        bzip2 -d -c "$PACKAGE_SOURCE_ORIG" > "$PACKAGE_SRC_TEMP/${PACKAGE_SOURCE_NAME%.tbz2}.tar" || return 1
+
+        echo "Compressing the package source using xz"
+        xz "$PACKAGE_SRC_TEMP/${PACKAGE_SOURCE_NAME%.tbz2}.tar" || return 1
+
+        echo "Moving the converted source to the package source directory"
+        mv -f "$PACKAGE_SRC_TEMP/${PACKAGE_SOURCE_NAME%.tbz2}.tar.xz" "$_PACKAGE_SRC" || return 1
+   elif [ "$PACKAGE_SOURCE_TYPE" = "tar" ]; then
+        echo "Copying the package source to the temporary source directory"
+        cp "$PACKAGE_SOURCE_ORIG" "$PACKAGE_SRC_TEMP" || return 1
+
+        echo "Compressing the package source using xz"
+        xz "$PACKAGE_SRC_TEMP/${PACKAGE_SOURCE_NAME%.tar}.tar" || return 1
+
+        echo "Moving the converted source to the package source directory"
+        mv -f "$PACKAGE_SRC_TEMP/${PACKAGE_SOURCE_NAME%.tar}.tar.xz" "$_PACKAGE_SRC" || return 1
+   elif [ "$PACKAGE_SOURCE_TYPE" = "zip" ]; then
+        echo "Extracting the package source to the temporary source directory using unzip"
+        unzip "$PACKAGE_SOURCE_ORIG" -d "$PACKAGE_SRC_TEMP" || return 1
+
+        echo "Creating a tarball of the extracted source"
+        tar -C "$PACKAGE_SRC_TEMP" -cJf "$PACKAGE_SRC_TEMP/${PACKAGE_SOURCE_NAME%.zip}.tar.xz" "$(ls $PACKAGE_SRC_TEMP)" || return 1
+
+        echo "Moving the converted source to the package source directory"
+        mv -f "$PACKAGE_SRC_TEMP/${PACKAGE_SOURCE_NAME%.zip}.tar.xz" "$_PACKAGE_SRC" || return 1
+   elif [ "$PACKAGE_SOURCE_TYPE" = "custom" ]; then
+        echo "Executing the package build convert function"
+        cd "$PACKAGE_SRC_TEMP"
+        build_convert || return 1
+   elif [ "$PACKAGE_SOURCE_TYPE" = "tarxz" ] || [ "$PACKAGE_SOURCE_TYPE" = "txz" ] || [ "$PACKAGE_SOURCE_TYPE" = "tarlzma" ]; then
+        echo "No need to convert the source of this type"
+        return 0
+   else
+        echo "Error! Unsupported source type."
+        return 1
+   fi
+
+   echo "---------------------------------------------------------------"
+   echo ""
+   echo "Converted the package $PACKAGE source successfully."
+   echo ""
+   echo "---------------------------------------------------------------"
+
+   return 0
+
+}
+
+[ -f "$PACKAGE_CONVERT_STAMP" ] && sudo rm -f "$PACKAGE_CONVERT_STAMP"
+
+echo -e "${MESSAGE_COLOR}Converting the package ${MESSAGE_COLOR_H}$PACKAGE${MESSAGE_COLOR} source ... ${NORMAL}\c"
+this_main > "$PACKAGE_MESSAGE_LOG" 2>&1
+if [ "$?" -gt 0 ]; then
+     echo "${ERROR_COLOR}failed!${NORMAL}"
+     echo "${WARNING_COLOR}For details: ${WARNING_COLOR_H}buildit --print message${NORMAL}"
+     exit 1
+fi
+echo "${MESSAGE_COLOR_H}successful!${NORMAL}"
+
+touch "$PACKAGE_CONVERT_STAMP"
+
+exit 0
+

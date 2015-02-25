@@ -1,0 +1,163 @@
+#!/bin/sh
+
+############################################################################
+#                                                                          #
+#           checkit: Checks the extension for possible errors              #
+#                                                                          #
+############################################################################
+
+#
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 2 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+#  Copyright (c) 2011 Sercan Arslan <arslanserc@gmail.com>
+#
+
+. /etc/init.d/tc-functions
+
+TET_ROOT="$(dirname $0)/.."
+
+if [ -f "$TET_ROOT/share/tet/functions.sh" ]; then
+     . "$TET_ROOT/share/tet/functions.sh"
+else
+     echo "${RED}$(basename $0):${BLUE} tc-ext-tools functions file not found!${NORMAL}"
+     exit 1
+fi
+
+if [ -n "$HAVE_TET_CREATE" -a ! -f "$PACKAGE_CREATE_STAMP" ]; then
+     echo "${ERROR_COLOR}You must create it first!${NORMAL}"
+     exit 1
+fi
+
+this_check() {
+
+   echo -e "Checking if the package extension is empty ... \c"
+   if [ -z "$(cat $PACKAGE_EXTENSION_TCZ_LIST)" ]; then
+        echo "yes"
+        return 0
+   else
+        echo "no"
+   fi
+
+   echo "Cleaning the package extension bin temporary directory"
+   [ -d "$PACKAGE_EXTENSION_BIN_TEMP" ] && sudo rm -rf "$PACKAGE_EXTENSION_BIN_TEMP"
+   mkdir -p "$PACKAGE_BIN_TEMP"
+
+   echo "Extracting the package extension to the package extension bin temporary directory"
+   sudo unsquashfs -d "$PACKAGE_EXTENSION_BIN_TEMP" "$PACKAGE_EXTENSION_TCZ" || return 1
+
+   echo "Checking the package extension files"
+   cd "$PACKAGE_EXTENSION_BIN_TEMP"
+   sudo find -not -type d -exec file "{}" \; || return 1
+   cd -
+
+   echo -e "Checking if the package extension has a tce.installed script ... \c"
+   if [ -e "$PACKAGE_EXTENSION_BIN_TEMP/usr/local/tce.installed/$PACKAGE_EXTENSION_NAME" ]; then
+        echo "yes"
+
+        echo -e "Checking if the permissions of tce.installed directory is correct ... \c"
+        OUT=$(sudo busybox ls -d -l "$PACKAGE_EXTENSION_BIN_TEMP/usr/local/tce.installed")
+        PERM=$(echo $OUT | cut -d" " -f1)
+        OWNER=$(echo $OUT | cut -d" " -f3-4)
+
+        if [ "$PERM" = "drwxrwxr-x" -o "$PERM" = "drwxrwsr-x" ] && [ "$OWNER" = "root staff" ]; then
+             echo "yes"
+        else
+             echo "no"
+             return 1
+        fi
+
+        echo -e "Checking if the permissions of tce.installed script is correct ... \c"
+        OUT=$(sudo busybox ls -l "$PACKAGE_EXTENSION_BIN_TEMP/usr/local/tce.installed/$PACKAGE_EXTENSION_NAME")
+        PERM=$(echo $OUT | cut -d" " -f1)
+        OWNER=$(echo $OUT | cut -d" " -f3-4)
+
+        if [ "$PERM" = "-rwxrwxr-x" -o "$PERM" = "-rwxrwsr-x" ] && [ "$OWNER" = "root staff" ]; then
+             echo "yes"
+        else
+             echo "no"
+             return 1
+        fi
+   else
+        echo "no"
+   fi
+
+   return 0
+
+}
+
+this_main() {
+
+   echo "---------------------------------------------------------------"
+   echo ""
+   echo "Checking the package $PACKAGE extensions ..."
+   echo ""
+   echo "---------------------------------------------------------------"
+
+   for EXTENSION in $EXTENSIONS
+   do
+       set_extension
+
+       echo "---------------------------------------------------------------"
+       echo "Checking the package extension $PACKAGE_EXTENSION_NAME"
+       echo "---------------------------------------------------------------"
+
+       echo -e "Checking if the package extension is created before ... \c"
+       if [ -f "$PACKAGE_EXTENSION_TCZ" ]; then
+            echo "yes"
+       else
+            echo "no"
+            echo "Error! You must create it first."
+            return 1
+       fi
+
+       this_check
+       if [ "$?" -gt 0 ]; then
+            echo "---------------------------------------------------------------"
+            echo "Error! Checking the extension $PACKAGE_EXTENSION_NAME failed"
+            echo "---------------------------------------------------------------"
+            sudo rm -rf "$PACKAGE_EXTENSION_BIN_TEMP"
+            return 1
+       else
+            echo "---------------------------------------------------------------"
+            echo "Checking the extension $PACKAGE_EXTENSION_NAME successful"
+            echo "---------------------------------------------------------------"
+            sudo rm -rf "$PACKAGE_EXTENSION_BIN_TEMP"
+       fi
+   done
+
+   echo "---------------------------------------------------------------"
+   echo ""
+   echo "Checked the package $PACKAGE extensions successfully."
+   echo ""
+   echo "---------------------------------------------------------------"
+
+   return 0
+
+}
+
+[ -f "$PACKAGE_CHECK_STAMP" ] && sudo rm -f "$PACKAGE_CHECK_STAMP"
+
+echo -e "${MESSAGE_COLOR}Checking the package ${MESSAGE_COLOR_H}$PACKAGE${MESSAGE_COLOR} extensions ... ${NORMAL}\c"
+this_main > "$PACKAGE_MESSAGE_LOG" 2>&1
+if [ "$?" -gt 0 ]; then
+     echo "${ERROR_COLOR}failed!${NORMAL}"
+     echo "${WARNING_COLOR}For details: ${WARNING_COLOR_H}buildit --print message${NORMAL}"
+     exit 1
+fi
+echo "${MESSAGE_COLOR_H}successful!${NORMAL}"
+
+touch "$PACKAGE_CHECK_STAMP"
+
+exit 0
+

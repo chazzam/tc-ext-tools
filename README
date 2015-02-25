@@ -1,0 +1,22 @@
+
+# What is tc-ext-tools ?
+t(iny)c(ore)-ext(ension)-tools is a package build system developed for Tiny Core Linux.
+It is originally written by Sercan Arslan (aka Arslan S. at Tiny Core Linux).
+
+# What is the aim of the project ?
+The aim of the project is to reduce the command line usage as much as possible
+and create a high level, easy and fast package maintenance system.
+
+# What are the main design concepts behind it ?
+The package build system, which is inspired by the divide and conquer philosophy, is based on a set of tools.
+The building process of a package is done step by step and the package maintainer has complete control
+over defining each step as a rule.
+
+# Where is the project hosted at ?
+The project is hosted at http://code.google.com/p/tc-ext-tools/
+
+# Where to start ?
+http://code.google.com/p/tc-ext-tools/wiki/Introduction
+
+Sercan Arslan <arslanserc@gmail.com>
+

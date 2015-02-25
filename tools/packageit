@@ -1,0 +1,162 @@
+#!/bin/sh
+
+############################################################################
+#                                                                          #
+#                     packageit: Packages the package                      #
+#                                                                          #
+############################################################################
+
+#
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 2 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+#  Copyright (c) 2011 Sercan Arslan <arslanserc@gmail.com>
+#
+
+. /etc/init.d/tc-functions
+
+TET_ROOT="$(dirname $0)/.."
+
+if [ -f "$TET_ROOT/share/tet/functions.sh" ]; then
+     . "$TET_ROOT/share/tet/functions.sh"
+else
+     echo "${RED}$(basename $0):${BLUE} tc-ext-tools functions file not found!${NORMAL}"
+     exit 1
+fi
+
+if [ -n "$HAVE_TET_DOWNLOAD" -a ! -f "$PACKAGE_DOWNLOAD_STAMP" ] && [ -n "$HAVE_TET_CONVERT" -a ! -f "$PACKAGE_CONVERT_STAMP" ]; then
+     echo "${ERROR_COLOR}You must download it first!${NORMAL}"
+     exit 1
+fi
+
+if [ -n "$HAVE_TET_CREATE" -a ! -f "$PACKAGE_CREATE_STAMP" ]; then
+     echo "${ERROR_COLOR}You must create it first!${NORMAL}"
+     exit 1
+fi
+
+if [ -n "$HAVE_TET_GENERATE" -a ! -f "$PACKAGE_GENERATE_STAMP" ]; then
+     echo "${ERROR_COLOR}You must generate it first!${NORMAL}"
+     exit 1
+fi
+
+if [ -n "$HAVE_TET_CHECK" -a ! -f "$PACKAGE_CHECK_STAMP" ]; then
+     echo "${ERROR_COLOR}You must check it first!${NORMAL}"
+     exit 1
+fi
+
+this_main() {
+
+   echo "---------------------------------------------------------------"
+   echo ""
+   echo "Packaging the package $PACKAGE ..."
+   echo ""
+   echo "---------------------------------------------------------------"
+
+   echo "---------------------------------------------------------------"
+   echo "Cleaning the package pkg temporary directory"
+   echo "---------------------------------------------------------------"
+   [ -d "$PACKAGE_PKG_TEMP" ] && sudo rm -rf "$PACKAGE_PKG_TEMP"
+   mkdir -p "$PACKAGE_PKG_TEMP"
+
+   for EXTENSION in $EXTENSIONS
+   do
+       set_extension
+
+       echo "---------------------------------------------------------------"
+       echo "Packaging the package extension $PACKAGE_EXTENSION_NAME"
+       echo "---------------------------------------------------------------"
+
+       echo -e "Checking if the package extension $PACKAGE_EXTENSION_NAME is created before ... \c"
+       if [ -f "$PACKAGE_EXTENSION_TCZ" ]; then
+            echo "yes"
+       else
+            echo "no"
+            echo "You must create it first!"
+            return 1
+       fi
+
+       echo "Copying the package extension $PACKAGE_EXTENSION_NAME files to the package extension temporary directory."
+       [ -d "$PACKAGE_EXTENSION_PKG_TEMP" ] || mkdir -p "$PACKAGE_EXTENSION_PKG_TEMP"
+       cp -f "$PACKAGE_EXTENSION_PKG"/*.tcz* "$PACKAGE_EXTENSION_PKG_TEMP" || return 1
+   done
+
+   echo "---------------------------------------------------------------"
+   echo "Copying the package source to the package temporary directory"
+   echo "---------------------------------------------------------------"
+
+   echo -e "Checking if the package source converted exists ... \c"
+   if [ -f "$PACKAGE_SOURCE_CONV" ]; then
+        echo "yes"
+        echo "Packaging it instead of the original source"
+        cp -f "$PACKAGE_SOURCE_CONV" "$PACKAGE_PKG_TEMP_PACKAGE" || return 1
+   else
+        echo "no"
+        echo -e "Checking if the package source exists ... \c"
+        if [ -f "$PACKAGE_SOURCE_ORIG" ]; then
+             echo "yes"
+             cp -f "$PACKAGE_SOURCE_ORIG" "$PACKAGE_PKG_TEMP_PACKAGE" || return 1
+        else
+             echo "no"
+        fi
+   fi
+
+   echo "Adding a note to package"
+   cat > "${PACKAGE_PKG_TEMP_PACKAGE}/readme.txt" << _EOF
+This package was built by $PACKAGE_MAINTAINER on $DATE using tc-ext-tools.
+tc-ext-tools is a package build system hosted at code.google.com/p/tc-ext-tools
+_EOF
+
+   echo -e "Checking if the package $PACKAGE tarball exists ... \c"
+   if [ -f "$PACKAGE_PACKAGE" ]; then
+        echo "yes"
+        echo "Removing the package $PACKAGE tarball"
+        sudo rm -f "$PACKAGE_PACKAGE"
+   else
+        echo "no"
+   fi
+
+   echo "---------------------------------------------------------------"
+   echo "Creating the package $PACKAGE tarball"
+   echo "---------------------------------------------------------------"
+   tar -C "$PACKAGE_PKG_TEMP" -cvjf "$PACKAGE_PACKAGE" "$PACKAGE-$VERSION" || return 1
+
+   echo "---------------------------------------------------------------"
+   echo "Cleaning the package pkg temporary directory"
+   echo "---------------------------------------------------------------"
+   sudo rm -rf "$PACKAGE_PKG_TEMP"
+
+   echo "---------------------------------------------------------------"
+   echo ""
+   echo "Packaged the package $PACKAGE successfully."
+   echo ""
+   echo "---------------------------------------------------------------"
+
+   return 0
+
+}
+
+[ -f "$PACKAGE_PACKAGE_STAMP" ] && sudo rm -f "$PACKAGE_PACKAGE_STAMP"
+
+echo -e "${MESSAGE_COLOR}Packaging the package ${MESSAGE_COLOR_H}$PACKAGE${MESSAGE_COLOR} ... ${NORMAL}\c"
+this_main > "$PACKAGE_MESSAGE_LOG" 2>&1
+if [ "$?" -gt 0 ]; then
+     echo "${ERROR_COLOR}failed!${NORMAL}"
+     echo "${WARNING_COLOR}For details: ${WARNING_COLOR_H}buildit --print message${NORMAL}"
+     exit 1
+fi
+echo "${MESSAGE_COLOR_H}successful!${NORMAL}"
+
+touch "$PACKAGE_PACKAGE_STAMP"
+
+exit 0
+

@@ -1,0 +1,210 @@
+#!/bin/sh
+
+############################################################################
+#                                                                          #
+#                downloadit: Downloads the package source                  #
+#                                                                          #
+############################################################################
+
+#
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 2 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+#  Copyright (c) 2011 Sercan Arslan <arslanserc@gmail.com>
+#
+
+. /etc/init.d/tc-functions
+
+TET_ROOT="$(dirname $0)/.."
+
+if [ -f "$TET_ROOT/share/tet/functions.sh" ]; then
+     . "$TET_ROOT/share/tet/functions.sh"
+else
+     echo "${RED}$(basename $0):${BLUE} tc-ext-tools functions file not found!${NORMAL}"
+     exit 1
+fi
+
+this_revise() {
+
+   echo "Revising with respect to new version $VERSION_NEW"
+   if [ "$VERSION_NEW" != "$VERSION" ]; then
+        VERSION="$VERSION_NEW"
+
+        echo "Adjusting the package version according to revision number"
+        sed -i "s/VERSION=.*/VERSION=\"${VERSION}\"/" "$PACKAGE_COMMON" || return 1
+
+        echo "Renaming the package source top level directory"
+        SOURCE_TOPDIR="${PACKAGE}-${VERSION}"
+        mv "$PACKAGE_SOURCE_TOPDIR" "$PACKAGE_SRC_TEMP/$SOURCE_TOPDIR" || return 1
+
+        PACKAGE_SOURCE_TOPDIR="$PACKAGE_SRC_TEMP/$PACKAGE-$VERSION"
+        PACKAGE_SOURCE_NAME="${PACKAGE}-${VERSION}.tar.xz"
+   else
+        echo "No version change, skipping ..."
+   fi
+
+}
+
+this_main() {
+
+   echo "---------------------------------------------------------------"
+   echo ""
+   echo "Downloading the package $PACKAGE source ..."
+   echo ""
+   echo "---------------------------------------------------------------"
+
+   echo "Cleaning the package source directory"
+   [ -d "$_PACKAGE_SRC" ] && sudo rm -rf "$_PACKAGE_SRC"
+   mkdir -p "$_PACKAGE_SRC" || return 1
+
+   if [ -n "$VERSION_CONTROL_SYSTEM" ]; then
+        echo "Cleaning the package src temporary directory"
+        [ -d "$PACKAGE_SRC_TEMP" ] && sudo rm -rf "$PACKAGE_SRC_TEMP"
+        mkdir -p "$PACKAGE_SRC_TEMP" || return 1
+
+        cd "$PACKAGE_SRC_TEMP"
+
+        if [ "$PACKAGE_SOURCE_URL_TYPE" = "svn" ]; then
+             if [ -n "$SVN_FLAGS" ]; then
+                  SVN_FLAGS="--non-interactive --trust-server-cert co $SVN_FLAGS"
+             else
+                  SVN_FLAGS="--non-interactive --trust-server-cert co"
+             fi
+
+             echo "Checking out svn repository $SOURCE"
+             svn $SVN_FLAGS "$SOURCE" "$PACKAGE_SOURCE_TOPDIR" || return 1
+
+             echo -e "Getting svn repository revision number ... \c"
+             if [ -z "$SKIP_REVISION" ]; then
+                  SVN_REVISION=$(grep "Checked out revision" "$PACKAGE_MESSAGE_LOG" | cut -f4 -d" " | sed 's/\.//')
+
+                  if [ -n "$SVN_REVISION" ]; then
+                       echo "$SVN_REVISION"
+                       VERSION_NEW="svn~r${SVN_REVISION}"
+                       this_revise || return 1
+                  else
+                       echo "failed!"
+                  fi
+             else
+                  echo "skipping"
+             fi
+        elif [ "$PACKAGE_SOURCE_URL_TYPE" = "hg" ]; then
+             if [ -n "$HG_FLAGS" ]; then
+                  HG_FLAGS="clone $HG_FLAGS"
+             else
+                  HG_FLAGS="clone"
+             fi
+
+             echo "Checking out mercurial/hg repository $SOURCE"
+             hg $HG_FLAGS "$SOURCE" "$PACKAGE_SOURCE_TOPDIR" || return 1
+
+             echo -e "Getting mercurial repository revision number ... \c"
+             if [ -z "$SKIP_REVISION" ]; then
+                  cd "$PACKAGE_SOURCE_TOPDIR"
+                  HG_REVISION=$(hg identify -i)
+                  cd - >/dev/null
+
+                  if [ -n "$HG_REVISION" ]; then
+                       echo "$HG_REVISION"
+                       VERSION_NEW="hg~${HG_REVISION}"
+                       this_revise || return 1
+                  else
+                       echo "failed!"
+                  fi
+             else
+                  echo "skipping"
+             fi
+        elif [ "$PACKAGE_SOURCE_URL_TYPE" = "bzr" ]; then
+             if [ -n "$BZR_FLAGS" ]; then
+                  BZR_FLAGS="branch $BZR_FLAGS"
+             else
+                  BZR_FLAGS="branch"
+             fi
+
+             echo "Checking out bzr repository $SOURCE"
+             bzr $BZR_FLAGS "$SOURCE" "$PACKAGE_SOURCE_TOPDIR" || return 1
+
+             echo -e "Getting bzr repository revision number ... \c"
+             if [ -z "$SKIP_REVISION" ]; then
+                  cd "$PACKAGE_SOURCE_TOPDIR"
+                  BZR_REVISION=$(bzr log -r-1 | grep revno | cut -f2 -d: | xargs echo)
+                  cd - >/dev/null
+
+                  if [ -n "$BZR_REVISION" ]; then
+                       echo "$BZR_REVISION"
+                       VERSION_NEW="$bzr~r${BZR_REVISION}"
+                       this_revise || return 1
+                  else
+                       echo "failed!"
+                  fi
+             else
+                  echo "skipping"
+             fi
+        elif [ "$PACKAGE_SOURCE_URL_TYPE" = "git" ]; then
+             if [ -n "$GIT_FLAGS" ]; then
+                  GIT_FLAGS="clone $GIT_FLAGS"
+             else
+                  GIT_FLAGS="clone"
+             fi
+
+             echo "Checking out git repository $SOURCE"
+             git $GIT_FLAGS "$SOURCE" "$PACKAGE_SOURCE_TOPDIR" || return 1
+        fi
+
+        echo "Creating a tarball from the source"
+        tar --exclude-vcs -cvJf "$PACKAGE_SOURCE_NAME" "$SOURCE_TOPDIR" || return 1
+
+        echo "Moving the tarball to the package source directory"
+        mv -f "$PACKAGE_SOURCE_NAME" "$_PACKAGE_SRC" || return 1
+   elif [ "$PACKAGE_SOURCE_URL_TYPE" = "generic" ]; then
+        echo "Downloading the package source $PACKAGE_SOURCE_NAME from $SOURCE"
+        wget --no-check-certificate "$SOURCE" -O "$PACKAGE_SOURCE_ORIG" || return 1
+   elif [ "$PACKAGE_SOURCE_URL_TYPE" = "file" ]; then
+        if [ -f "$SOURCE" ]; then
+             echo "Copying the package source $PACKAGE_SOURCE_NAME from local source $SOURCE"
+             cp "$SOURCE" "$PACKAGE_SOURCE_ORIG" || return 1
+        else
+             echo "The local source $SOURCE does not exist"
+             return 1
+        fi
+   elif [ "$PACKAGE_SOURCE_URL_TYPE" = "custom" ]; then
+        echo "Executing the package build download function"
+        cd "$_PACKAGE_SRC"
+        build_download || return 1
+   fi
+
+   echo "---------------------------------------------------------------"
+   echo ""
+   echo "Downloaded the package $PACKAGE source successfully."
+   echo ""
+   echo "---------------------------------------------------------------"
+
+   return 0
+
+}
+
+[ -f "$PACKAGE_DOWNLOAD_STAMP" ] && sudo rm -f "$PACKAGE_DOWNLOAD_STAMP"
+
+echo -e "${MESSAGE_COLOR}Downloading the package ${MESSAGE_COLOR_H}$PACKAGE${MESSAGE_COLOR} source ... ${NORMAL}\c"
+this_main > "$PACKAGE_MESSAGE_LOG" 2>&1
+if [ "$?" -gt 0 ]; then
+     echo "${ERROR_COLOR}failed!${NORMAL}"
+     echo "${WARNING_COLOR}For details: ${WARNING_COLOR_H}buildit --print message${NORMAL}"
+     exit 1
+fi
+echo "${MESSAGE_COLOR_H}successful!${NORMAL}"
+
+touch "$PACKAGE_DOWNLOAD_STAMP"
+
+exit 0
+

@@ -1,0 +1,494 @@
+
+############################################################################
+#                                                                          #
+#              tc-ext-tools common functions and definitions               #
+#                                                                          #
+############################################################################
+
+#
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 2 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+#  Copyright (c) 2011 Sercan Arslan <arslanserc@gmail.com>
+#
+
+# This is it!
+THIS=$(basename $0)
+
+# check for root user
+if [ $(id -u) = 0 -a "$THIS" != "installit" ]; then
+     echo "${RED}Do not run ${THIS} as root!${NORMAL}"
+     exit 1
+elif [ $(id -u) != 0 -a "$THIS" = "installit" ]; then
+       echo "${RED}You must run ${THIS} as root!${NORMAL}"
+       exit 1
+fi
+
+# source default configuration
+if [ -f "$TET_ROOT/etc/tet.conf" ]; then
+     . "$TET_ROOT/etc/tet.conf"
+else
+     echo "${RED}${THIS}: default configuration file not found!${NORMAL}"
+     exit 1
+fi
+
+# get tc user
+TCUSER=$(cat /etc/sysconfig/tcuser)
+
+# source user configuration
+if [ -f "/home/$TCUSER/.config/tet.conf" ]; then
+     . "/home/$TCUSER/.config/tet.conf"
+else
+    echo "${RED}${THIS}: user configuration file not found!${NORMAL}"
+    exit 1
+fi
+
+# lists the directories
+ldir() {
+
+   unset dirs
+   for i in `ls $@`
+   do
+      res=`ls -l $@ | grep $i | grep '^d'`
+      if [ -n "$res" ]; then
+           dirs="$i $dirs"
+      fi
+   done
+   echo $dirs
+
+}
+
+# sets the package source variables
+set_source() {
+
+     # does the package have a source ?
+     if [ -z "$SOURCE" ]; then
+          # there is no source: probably a virtual package
+          PACKAGE_SOURCE_TYPE="none"
+          PACKAGE_SOURCE_URL_TYPE="none"
+          PACKAGE_SOURCE_TOPDIR="$PACKAGE_SRC_TEMP"
+          return 0
+     else
+          # get the source url type and name
+          if [ "${SOURCE%%::*}" = "${SOURCE#*::}" ]; then
+               PACKAGE_SOURCE_URL_TYPE="generic"
+          else
+               PACKAGE_SOURCE_URL_TYPE="${SOURCE%%::*}"
+          fi
+
+          if [ "${SOURCE##*->}" != "${SOURCE%->*}" ]; then
+               PACKAGE_SOURCE_NAME="${SOURCE##*->}"
+          fi
+     fi
+
+     SOURCE="${SOURCE#*::}" ; SOURCE="${SOURCE%->*}"
+
+     # set the source name
+     if [ -z "$PACKAGE_SOURCE_NAME" ]; then
+          if [ "$PACKAGE_SOURCE_URL_TYPE" = "generic" ] || [ "$PACKAGE_SOURCE_URL_TYPE" = "custom" ] ||
+             [ "$PACKAGE_SOURCE_URL_TYPE" = "file" ]; then
+               PACKAGE_SOURCE_NAME="${SOURCE##*/}"
+          elif [ "$PACKAGE_SOURCE_URL_TYPE" = "svn" ] || [ "$PACKAGE_SOURCE_URL_TYPE" = "git" ] || 
+               [ "$PACKAGE_SOURCE_URL_TYPE" = "hg" ] || [ "$PACKAGE_SOURCE_URL_TYPE" = "bzr" ]; then
+               VERSION_CONTROL_SYSTEM="$PACKAGE_SOURCE_URL_TYPE"
+               PACKAGE_SOURCE_NAME="${PACKAGE}-${VERSION}.tar.xz"
+          fi
+     fi
+
+     # set the source type
+     if [ "${PACKAGE_SOURCE_NAME%.tar.bz2}" != "$PACKAGE_SOURCE_NAME" ]; then
+          PACKAGE_SOURCE_TYPE="tarbz2"
+          PACKAGE_SOURCE_NAME_CONV="${PACKAGE_SOURCE_NAME%.bz2}.xz"
+     elif [ "${PACKAGE_SOURCE_NAME%.tar.gz}" != "$PACKAGE_SOURCE_NAME" ]; then
+          PACKAGE_SOURCE_TYPE="targz"
+          PACKAGE_SOURCE_NAME_CONV="${PACKAGE_SOURCE_NAME%.gz}.xz"
+     elif [ "${PACKAGE_SOURCE_NAME%.tgz}" != "$PACKAGE_SOURCE_NAME" ]; then
+          PACKAGE_SOURCE_NAME_CONV="${PACKAGE_SOURCE_NAME%.tgz}.tar.xz"
+          PACKAGE_SOURCE_TYPE="tgz"
+     elif [ "${PACKAGE_SOURCE_NAME%.tbz2}" != "$PACKAGE_SOURCE_NAME" ]; then
+          PACKAGE_SOURCE_NAME_CONV="${PACKAGE_SOURCE_NAME%.tbz2}.tar.xz"
+          PACKAGE_SOURCE_TYPE="tbz2"
+     elif [ "${PACKAGE_SOURCE_NAME%.tar.xz}" != "$PACKAGE_SOURCE_NAME" ]; then
+          PACKAGE_SOURCE_TYPE="tarxz"
+          PACKAGE_SOURCE_NAME_CONV="$PACKAGE_SOURCE_NAME"
+     elif [ "${PACKAGE_SOURCE_NAME%.txz}" != "$PACKAGE_SOURCE_NAME" ]; then
+          PACKAGE_SOURCE_TYPE="txz"
+          PACKAGE_SOURCE_NAME_CONV="$PACKAGE_SOURCE_NAME"
+     elif [ "${PACKAGE_SOURCE_NAME%.tar.lzma}" != "$PACKAGE_SOURCE_NAME" ]; then
+          PACKAGE_SOURCE_TYPE="tarlzma"
+          PACKAGE_SOURCE_NAME_CONV="$PACKAGE_SOURCE_NAME"
+     elif [ "${PACKAGE_SOURCE_NAME%.tar}" != "$PACKAGE_SOURCE_NAME" ]; then
+          PACKAGE_SOURCE_TYPE="tar"
+          PACKAGE_SOURCE_NAME_CONV="${PACKAGE_SOURCE_NAME%.tar}.tar.xz"
+     elif [ "${PACKAGE_SOURCE_NAME%.zip}" != "$PACKAGE_SOURCE_NAME" ]; then
+          PACKAGE_SOURCE_TYPE="zip"
+          PACKAGE_SOURCE_NAME_CONV="${PACKAGE_SOURCE_NAME%.zip}.tar.xz"
+     else
+          PACKAGE_SOURCE_TYPE="custom"
+          PACKAGE_SOURCE_NAME_CONV="${PACKAGE}-${VERSION}.tar.xz"
+     fi
+
+     # try to determine the source's top level directory
+     # you may need to define the variable SOURCE_TOPDIR in the package common file
+     if [ -z "$SOURCE_TOPDIR" ]; then
+          # source's top level directory is specificly defined for vcs type sources
+          if [ -n "$VERSION_CONTROL_SYSTEM" ]; then
+               SOURCE_TOPDIR=${PACKAGE}-${VERSION}
+          # the source is unpacked inside the package's temporary src directory
+          elif [ -d "$PACKAGE_SRC_TEMP" ]; then
+               # we count the number of directories where the source is unpacked
+               DIR=`ldir $PACKAGE_SRC_TEMP`
+               cnt=0; for i in $DIR; do cnt=`expr $cnt + 1`; done
+               if [ $cnt -eq 1 ]; then
+                    SOURCE_TOPDIR="$DIR"
+               else
+                    SOURCE_TOPDIR="./"
+               fi
+          else
+               SOURCE_TOPDIR=${PACKAGE}-${VERSION}
+          fi
+     fi
+
+     # full path to source top dir
+     if [ -n "$SOURCE_TOPDIR" ]; then
+          PACKAGE_SOURCE_TOPDIR="$PACKAGE_SRC_TEMP/$SOURCE_TOPDIR"
+     fi
+
+     # and finally we have the package source
+     if [ "$PACKAGE_SOURCE_TYPE" != "none" ]; then
+          PACKAGE_SOURCE_ORIG="$_PACKAGE_SRC/$PACKAGE_SOURCE_NAME"
+          PACKAGE_SOURCE_CONV="$_PACKAGE_SRC/$PACKAGE_SOURCE_NAME_CONV"
+          if [ -f "$PACKAGE_SOURCE_CONV" ]; then
+               PACKAGE_SOURCE="$PACKAGE_SOURCE_CONV"
+          else
+               PACKAGE_SOURCE="$PACKAGE_SOURCE_ORIG"
+          fi
+     fi
+
+}
+
+# sets the package build dependencies
+set_depends() {
+
+     # optional deps added here
+     if [ "$PACKAGE_SOURCE_URL_TYPE" = svn ]; then
+          TET_DEPENDS="$TET_DEPENDS svn"
+     elif [ "$PACKAGE_SOURCE_URL_TYPE" = git ]; then
+          TET_DEPENDS="$TET_DEPENDS git"
+     elif [ "$PACKAGE_SOURCE_URL_TYPE" = hg ]; then
+          TET_DEPENDS="$TET_DEPENDS mercurial"
+     elif [ "$PACKAGE_SOURCE_URL_TYPE" = bzr ]; then
+          TET_DEPENDS="$TET_DEPENDS bzr"
+     fi
+
+     if [ "$PACKAGE_SOURCE_TYPE" = zip ]; then
+          TET_DEPENDS="$TET_DEPENDS zip-unzip"
+     fi
+
+     if [ "$KERNEL_ARCH" == "x86_64" ]; then
+          TET_DEPENDS="$TET_DEPENDS toolchain64"
+          CROSS_COMPILE=x86_64-unknown-linux-gnu-
+          export PATH="/usr/local/x64/bin:$PATH"
+     fi
+
+     # replace KERNEL pattern with kernel name and set package build depends
+     PACKAGE_BUILD_DEPENDS=$(echo "$TET_DEPENDS $BUILD_DEPENDS" | sed -e "s/KERNEL/${KERNEL}/")
+
+}
+
+# sets the package extensions variables
+set_extensions() {
+
+   # if the variable EXTENSIONS is not set we determine the extensions by finding the extension install files
+   if [ -z "$EXTENSIONS" ]; then
+        if [ -d "$PACKAGE_EXTENSIONS" ]; then
+             for EXT in $(find "$PACKAGE_EXTENSIONS" -type f -name install)
+             do
+                 EXTENSIONS="$EXTENSIONS $(basename ${EXT%/install})"
+             done
+        fi
+   fi
+
+   # exit with error status if there is no extension found
+   if [ -z "$EXTENSIONS" ]; then
+        echo "Error, no extension available!"
+        exit 1
+   fi
+
+}
+
+# sets the package extension variables
+set_extension() {
+
+   # this variable must be set prior to any call to this function
+   if [ -z "$EXTENSION" ]; then
+        return 0
+   fi
+
+   # the files located under the package's extension directory
+   PACKAGE_EXTENSION_COMMON="$PACKAGE_EXTENSIONS/$EXTENSION/common"
+   PACKAGE_EXTENSION_INSTALL="$PACKAGE_EXTENSIONS/$EXTENSION/install"
+   PACKAGE_EXTENSION_DEP="$PACKAGE_EXTENSIONS/$EXTENSION/dep"
+   PACKAGE_EXTENSION_TCEINSTALLED="$PACKAGE_EXTENSIONS/$EXTENSION/tce.installed"
+
+   # extension specific variables
+   unset NAME ICON DESKTOP TAGS
+
+   # first source the package common file then, if available, source the extension common file
+   . "$PACKAGE_COMMON"
+   if [ -f "$PACKAGE_EXTENSION_COMMON" ]; then
+        . "$PACKAGE_EXTENSION_COMMON"
+   fi
+
+   # extension name is set to itself if not explicitly defined
+   if [ -z "$NAME" ]; then
+        PACKAGE_EXTENSION_NAME="$EXTENSION"
+   else
+        PACKAGE_EXTENSION_NAME="$NAME"
+   fi
+
+   # replace KERNEL with kernel name in the extension name
+   PACKAGE_EXTENSION_NAME=$(echo $PACKAGE_EXTENSION_NAME | sed "s/KERNEL/${KERNEL}/")
+
+   # package extension directories and files located under package storage directory
+   PACKAGE_EXTENSION_BIN="$PACKAGE_BIN/$PACKAGE_EXTENSION_NAME"
+   PACKAGE_EXTENSION_PKG="$PACKAGE_PKG/$PACKAGE_EXTENSION_NAME"
+   PACKAGE_EXTENSION_BIN_TEMP="$PACKAGE_BIN_TEMP/$PACKAGE_EXTENSION_NAME"
+   PACKAGE_EXTENSION_PKG_TEMP="$PACKAGE_PKG_TEMP_PACKAGE/$PACKAGE_EXTENSION_NAME"
+
+   PACKAGE_EXTENSION_TCZ="$PACKAGE_EXTENSION_PKG/${PACKAGE_EXTENSION_NAME}.tcz"
+   PACKAGE_EXTENSION_TCZ_INFO="$PACKAGE_EXTENSION_PKG/${PACKAGE_EXTENSION_NAME}.tcz.info"
+   PACKAGE_EXTENSION_TCZ_DEP="$PACKAGE_EXTENSION_PKG/${PACKAGE_EXTENSION_NAME}.tcz.dep"
+   PACKAGE_EXTENSION_TCZ_LIST="$PACKAGE_EXTENSION_PKG/${PACKAGE_EXTENSION_NAME}.tcz.list"
+   PACKAGE_EXTENSION_TCZ_MD5_TXT="$PACKAGE_EXTENSION_PKG/${PACKAGE_EXTENSION_NAME}.tcz.md5.txt"
+   PACKAGE_EXTENSION_TCZ_ZSYNC="$PACKAGE_EXTENSION_PKG/${PACKAGE_EXTENSION_NAME}.tcz.zsync"
+
+   TCZREPO_EXTENSION_INFO="${TCZREPO}/${PACKAGE_EXTENSION_NAME}.tcz.info"
+   PACKAGE_EXTENSION_TEMP_INFO="${PACKAGE_EXTENSION_PKG_TEMP}/${PACKAGE_EXTENSION_NAME}.tcz.info"
+   PACKAGE_EXTENSION_TEMP_COMMON="${PACKAGE_EXTENSION_PKG_TEMP}/${PACKAGE_EXTENSION_NAME}.common"
+
+   # application icon is set here
+   unset PACKAGE_EXTENSION_ICON PACKAGE_EXTENSION_DESKTOP PACKAGE_EXTENSION_DESKTOP_ORIG
+   if [ -n "$ICON" ]; then
+        PACKAGE_EXTENSION_ICON="$ICON"
+        PACKAGE_EXTENSION_DESKTOP="$PACKAGE_EXTENSION_BIN/$PREFIX/share/applications/${PACKAGE_EXTENSION_NAME}.desktop"
+        if [ -n "$DESKTOP" ]; then
+             PACKAGE_EXTENSION_DESKTOP_ORIG="$PACKAGE_EXTENSION_BIN/$DESKTOP"
+        fi
+   fi
+
+}
+
+# sets the date, time, and seconds
+set_date() {
+
+   DATE=$(date +%Y/%m/%d)
+   TIME=$(date +%H:%M:%S)
+   SECONDS=$(date +%s)
+   # use this variable in packages with a vcs source
+   _DATE=$(date +%Y%m%d)
+
+}
+
+# sets the tcl system variables
+set_tcl_system() {
+
+   TCMIRROR=http://distro.ibiblio.org/pub/linux/distributions/tinycorelinux/
+   TCVER="$(version | cut -f1 -d.)".x
+   ARCH=x86
+   KERNEL=$(uname -r)
+   TCZREPO="${TCMIRROR}/${TCVER}/${ARCH}/tcz"
+   TCEDIR=/etc/sysconfig/tcedir
+
+}
+
+# set compiler and linker flags if not already set
+set_flags() {
+   
+   [ -z "$CFLAGS" ] && export CFLAGS="$TET_CFLAGS"
+   [ -z "$CXXFLAGS" ] && export CXXFLAGS="$TET_CXXFLAGS"
+   [ -z "$LDFLAGS" ] && export LDFLAGS="$TET_LDFLAGS"
+
+}
+
+# call system functions
+set_date
+set_tcl_system
+
+if [ "$THIS" != "prepareit" ]; then
+     set_flags
+fi
+
+# linux root file system
+TET_PACKAGES_LINUX="$TET_PACKAGES/linux"
+TET_STORAGE_LINUX="$TET_STORAGE/linux"
+TET_LINUX="$TET_PACKAGES_LINUX/$KERNEL"
+LINUX_COMMON="$TET_LINUX/common"
+
+if [ -f "$LINUX_COMMON" ]; then
+     . "$LINUX_COMMON"
+
+     LINUX_SRC="$TET_LINUX/src"
+     LINUX_PATCHES="$LINUX_SRC/patches"
+     LINUX_CONFIG="$LINUX_SRC/$KERNEL_CONFIG"
+     LINUX_BUILD="${TET_STORAGE_LINUX}/${KERNEL}/${LINUX_DIR}"
+     LINUX_DL="${TET_STORAGE_LINUX}/dl"
+elif [ "$THIS" == "prepareit" ]; then
+     echo "${ERROR_COLOR}Linux $KERNEL common $LINUX_COMMON file not found!${NORMAL}"
+     exit 1
+fi
+
+# package root file system
+PACKAGE_ROOT="$PWD"
+PACKAGE_COMMON="$PACKAGE_ROOT/common"
+PACKAGE_BUILD="$PACKAGE_ROOT/build"
+PACKAGE_EXTENSIONS="$PACKAGE_ROOT/extensions"
+PACKAGE_FILES_LIST="$PACKAGE_EXTENSIONS/list"
+PACKAGE_SRC="$PACKAGE_ROOT/src"
+PACKAGE_PATCHES="$PACKAGE_SRC/patches"
+
+if [ "$THIS" != "addit" ] && [ -f "$PACKAGE_COMMON" ]; then
+     # source package common
+     . "$PACKAGE_COMMON"
+
+     # package storage directory layout
+     _PACKAGE_ROOT="$TET_STORAGE/$PACKAGE"
+     PACKAGE_BIN="$_PACKAGE_ROOT/bin"
+     _PACKAGE_SRC="$_PACKAGE_ROOT/src"
+     PACKAGE_LOG="$_PACKAGE_ROOT/log"
+     PACKAGE_PKG="$_PACKAGE_ROOT/pkg"
+     PACKAGE_BIN_TEMP="$PACKAGE_BIN/temp"
+     PACKAGE_SRC_TEMP="$_PACKAGE_SRC/temp"
+     PACKAGE_PKG_TEMP="$PACKAGE_PKG/temp"
+     PACKAGE_PKG_TEMP_PACKAGE="$PACKAGE_PKG_TEMP/$PACKAGE-$VERSION"
+
+     # log files
+     PACKAGE_CONFIGURE_LOG="$PACKAGE_LOG/configure.txt"
+     PACKAGE_COMPILE_LOG="$PACKAGE_LOG/compile.txt"
+     PACKAGE_INSTALL_LOG="$PACKAGE_LOG/install.txt"
+     PACKAGE_BUILD_LOG="$PACKAGE_LOG/build.txt"
+     PACKAGE_MESSAGE_LOG="$PACKAGE_LOG/message.txt"
+
+     # package tarball
+     PACKAGE_PACKAGE="$PACKAGE_PKG/${PACKAGE}-${VERSION}.tar.bz2"
+     # final product
+     PACKAGE_PACKAGE_ENCRYPTED="${PACKAGE_PACKAGE}.bfe"
+
+     # install destination
+     PACKAGE_INSTALL_ROOT="$PACKAGE_BIN/root"
+
+     # install prefix
+     if [ -z "$PREFIX" ]; then
+          PREFIX="/$TET_PREFIX"
+     fi
+     PACKAGE_INSTALL_PREFIX="$PREFIX"
+
+     # call package functions
+     set_source
+     set_extensions
+     set_depends
+
+     # short variables
+     P_ROOT="$PACKAGE_ROOT"
+     _P_ROOT="$_PACKAGE_ROOT"
+     P_NAM="$PACKAGE"
+     P_VER="$VERSION"
+     P_SRC="$PACKAGE_SRC"
+     _P_SRC="$_PACKAGE_SRC"
+     P_SRC_TMP="$PACKAGE_SRC_TEMP"
+     P_BIN="$PACKAGE_BIN"
+     S_TOP="$SOURCE_TOPDIR"
+     S_ROOT="$PACKAGE_SOURCE_TOPDIR"
+     INSTALL_ROOT="$PACKAGE_INSTALL_ROOT"
+     I_ROOT="$INSTALL_ROOT"
+     VCS="$VERSION_CONTROL_SYSTEM"
+
+     # create directories
+     [ -d "$TET_STORAGE" ] || sudo install -m 755 -d -o "$TCUSER" -g staff "$TET_STORAGE"
+     [ -d "$PACKAGE_BIN" ] || install -m 755 -d "$PACKAGE_BIN"
+     [ -d "$_PACKAGE_SRC" ] || install -m 755 -d "$_PACKAGE_SRC"
+     [ -d "$PACKAGE_PKG" ] || install -m 755 -d "$PACKAGE_PKG"
+     [ -d "$PACKAGE_LOG" ] || install -m 755 -d "$PACKAGE_LOG"
+     [ "$PACKAGE_SOURCE_TYPE" = "none" ] && mkdir -p "$PACKAGE_SOURCE_TOPDIR"
+
+     # touch log files
+     [ -f "$PACKAGE_CONFIGURE_LOG" ] || touch "$PACKAGE_CONFIGURE_LOG"
+     [ -f "$PACKAGE_COMPILE_LOG" ] || touch "$PACKAGE_COMPILE_LOG"
+     [ -f "$PACKAGE_INSTALL_LOG" ] || touch "$PACKAGE_INSTALL_LOG"
+     [ -f "$PACKAGE_BUILD_LOG" ] || touch "$PACKAGE_BUILD_LOG"
+     [ -f "$PACKAGE_MESSAGE_LOG" ] || touch "$PACKAGE_MESSAGE_LOG"
+
+elif [ "$THIS" != "addit" ]; then
+     echo "${ERROR_COLOR}You must add it first!${NORMAL}"
+     exit 1
+fi
+
+# get build rules from package build file
+get_rules() {
+
+   [ $(grep -v '^#' $PACKAGE_BUILD | grep -w tet_load) ] && HAVE_TET_LOAD=y
+   [ $(grep -v '^#' $PACKAGE_BUILD | grep -w tet_prepare) ] && HAVE_TET_PREPARE=y
+   [ $(grep -v '^#' $PACKAGE_BUILD | grep -w tet_download) ] && HAVE_TET_DOWNLOAD=y
+   [ $(grep -v '^#' $PACKAGE_BUILD | grep -w tet_convert) ] && HAVE_TET_CONVERT=y
+   [ $(grep -v '^#' $PACKAGE_BUILD | grep -w tet_unpack) ] && HAVE_TET_UNPACK=y
+   [ $(grep -v '^#' $PACKAGE_BUILD | grep -w tet_patch) ] && HAVE_TET_PATCH=y
+   [ $(grep -v '^#' $PACKAGE_BUILD | grep -w tet_configure) ] && HAVE_TET_CONFIGURE=y
+   [ $(grep -v '^#' $PACKAGE_BUILD | grep -w tet_compile) ] && HAVE_TET_COMPILE=y
+   [ $(grep -v '^#' $PACKAGE_BUILD | grep -w tet_install) ] && HAVE_TET_INSTALL=y
+   [ $(grep -v '^#' $PACKAGE_BUILD | grep -w tet_split) ] && HAVE_TET_SPLIT=y
+   [ $(grep -v '^#' $PACKAGE_BUILD | grep -w tet_strip) ] && HAVE_TET_STRIP=y
+   [ $(grep -v '^#' $PACKAGE_BUILD | grep -w tet_create) ] && HAVE_TET_CREATE=y
+   [ $(grep -v '^#' $PACKAGE_BUILD | grep -w tet_generate) ] && HAVE_TET_GENERATE=y
+   [ $(grep -v '^#' $PACKAGE_BUILD | grep -w tet_check) ] && HAVE_TET_CHECK=y
+   [ $(grep -v '^#' $PACKAGE_BUILD | grep -w tet_test) ] && HAVE_TET_TEST=y
+   [ $(grep -v '^#' $PACKAGE_BUILD | grep -w tet_package) ] && HAVE_TET_PACKAGE=y
+   [ $(grep -v '^#' $PACKAGE_BUILD | grep -w tet_encrypt) ] && HAVE_TET_ENCRYPT=y
+
+}
+
+# set package stamps
+set_stamps() {
+
+   PACKAGE_LOAD_STAMP="$PACKAGE_PKG/load.stamp"
+   PACKAGE_PREPARE_STAMP="$PACKAGE_PKG/prepare.stamp"
+   LINUX_PREPARE_STAMP="$TET_STORAGE_LINUX/$KERNEL/prepare.stamp"
+   PACKAGE_DOWNLOAD_STAMP="$_PACKAGE_SRC/download.stamp"
+   PACKAGE_CONVERT_STAMP="$_PACKAGE_SRC/convert.stamp"
+   PACKAGE_UNPACK_STAMP="$PACKAGE_SRC_TEMP/unpack.stamp"
+   PACKAGE_PATCH_STAMP="$PACKAGE_SRC_TEMP/patch.stamp"
+   PACKAGE_CONFIGURE_STAMP="$PACKAGE_SRC_TEMP/configure.stamp"
+   PACKAGE_COMPILE_STAMP="$PACKAGE_SRC_TEMP/compile.stamp"
+   PACKAGE_INSTALL_STAMP="$PACKAGE_BIN/install.stamp"
+   PACKAGE_SPLIT_STAMP="$PACKAGE_BIN/split.stamp"
+   PACKAGE_STRIP_STAMP="$PACKAGE_BIN/strip.stamp"
+   PACKAGE_CREATE_STAMP="$PACKAGE_PKG/create.stamp"
+   PACKAGE_GENERATE_STAMP="$PACKAGE_PKG/generate.stamp"
+   PACKAGE_CHECK_STAMP="$PACKAGE_PKG/check.stamp"
+   PACKAGE_TEST_STAMP="$PACKAGE_PKG/test.stamp"
+   PACKAGE_PACKAGE_STAMP="$PACKAGE_PKG/package.stamp"
+   PACKAGE_ENCRYPT_STAMP="$PACKAGE_PKG/encrypt.stamp"
+
+}
+
+if [ "$THIS" != "addit" ] && [ -f "$PACKAGE_BUILD" ]; then
+     # source package build
+     . "$PACKAGE_BUILD"
+
+     get_rules
+     set_stamps
+
+elif [ "$THIS" != "addit" ]; then
+     echo "${ERROR_COLOR}You must add it first!${NORMAL}"
+     exit 1
+fi
+

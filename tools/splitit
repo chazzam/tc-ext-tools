@@ -1,0 +1,267 @@
+#!/bin/sh
+
+############################################################################
+#                                                                          #
+#                 splitit: Splits the package extensions                   #
+#                                                                          #
+############################################################################
+
+#
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 2 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+#  Copyright (c) 2011 Sercan Arslan <arslanserc@gmail.com>
+#
+
+. /etc/init.d/tc-functions
+
+TET_ROOT="$(dirname $0)/.."
+
+if [ -f "$TET_ROOT/share/tet/functions.sh" ]; then
+     . "$TET_ROOT/share/tet/functions.sh"
+else
+     echo "${RED}$(basename $0):${BLUE} tc-ext-tools functions file not found!${NORMAL}"
+     exit 1
+fi
+
+if [ -n "$HAVE_TET_INSTALL" -a ! -f "$PACKAGE_INSTALL_STAMP" ]; then
+     echo "${ERROR_COLOR}You must install it first!${NORMAL}"
+     exit 1
+fi
+
+this_split() {
+
+   echo "---------------------------------------------------------------"
+   echo "Getting the paths from the package extension install"
+   echo "---------------------------------------------------------------"
+   PATHS=$(cat $PACKAGE_EXTENSION_INSTALL)
+   if [ -z "$PATHS" ]; then
+        PATHS="."
+   fi
+
+   echo "---------------------------------------------------------------"
+   echo "Cleaning the package extension bin temporary directory"
+   echo "---------------------------------------------------------------"
+   [ -d "$PACKAGE_EXTENSION_BIN_TEMP" ] && sudo rm -rf "$PACKAGE_EXTENSION_BIN_TEMP"
+   mkdir -p "$PACKAGE_EXTENSION_BIN_TEMP" || return 1
+
+   cd "$PACKAGE_EXTENSION_BIN_TEMP"
+
+   echo "---------------------------------------------------------------"
+   echo "Setting the include and the exclude paths"
+   echo "---------------------------------------------------------------"
+   unset INCLUDE_PATHS EXCLUDE_PATHS
+
+   for i in $PATHS
+   do
+       echo "---------------------------------------------------------------"
+       echo "Processing the path $i"
+       echo "---------------------------------------------------------------"
+       i=$(eval echo "$i")
+
+       echo -e "Checking if the path is commented out ... \c"
+       if [ "${i#\#}" != "$i" ]; then
+            echo "yes"
+            continue
+       else
+            echo "no"
+       fi
+
+       echo -e "Checking if the path is excluded ... \c"
+       if [ "${i#x-}" = "$i" ]; then
+            echo "no"
+            echo "Putting the path to the include paths"
+            INCLUDE_PATHS="$INCLUDE_PATHS $i"
+       else
+            echo "yes"
+            i="${i#x-}"
+            echo "Putting the path to the exclude paths"
+            EXCLUDE_PATHS="$EXCLUDE_PATHS $i"
+       fi
+   done
+
+   cd "$PACKAGE_INSTALL_ROOT"
+
+   echo "---------------------------------------------------------------"
+   echo "Creating the files to include list"
+   echo "---------------------------------------------------------------"
+   LIST="${PACKAGE_EXTENSION_BIN_TEMP}/install.list"
+   touch "$LIST"
+   if [ -n "$INCLUDE_PATHS" ]; then
+        sudo find $INCLUDE_PATHS -not -type d >> "$LIST" || return 1
+   fi
+   cat "$LIST"
+
+   echo "---------------------------------------------------------------"
+   echo "Creating the files to exclude list"
+   echo "---------------------------------------------------------------"
+   X_LIST="${PACKAGE_EXTENSION_BIN_TEMP}/x-install.list"
+   touch "$X_LIST"
+   if [ -n "$EXCLUDE_PATHS" ]; then
+        sudo find $EXCLUDE_PATHS -not -type d >> "$X_LIST" || return 1
+   fi
+   cat "$X_LIST"
+
+   echo "---------------------------------------------------------------"
+   echo "Creating the package extension files tarball using the files to include and the files to exclude lists"
+   echo "---------------------------------------------------------------"
+   sudo tar -T "$LIST" -X "$X_LIST" -cvpzf "$PACKAGE_EXTENSION_BIN_TEMP/pkg.tar.gz" || return 1
+
+   echo "---------------------------------------------------------------"
+   echo "Cleaning the package extension bin directory"
+   echo "---------------------------------------------------------------"
+   [ -d "$PACKAGE_EXTENSION_BIN" ] && sudo rm -rf "$PACKAGE_EXTENSION_BIN"
+   sudo mkdir -p "$PACKAGE_EXTENSION_BIN"
+
+   echo "---------------------------------------------------------------"
+   echo "Extracting the package extension files tarball to the package extension bin directory"
+   echo "---------------------------------------------------------------"
+   sudo mkdir -p "$PACKAGE_EXTENSION_BIN"
+   sudo tar -C "$PACKAGE_EXTENSION_BIN" -pxzf "$PACKAGE_EXTENSION_BIN_TEMP/pkg.tar.gz" || return 1
+
+   if [ "${PACKAGE_EXTENSION_NAME%-dev}" != "${PACKAGE_EXTENSION_NAME}" ]; then
+        echo "---------------------------------------------------------------"
+        echo "Making dev symlinks full path"
+        echo "---------------------------------------------------------------"
+        LINKS=$(find "$PACKAGE_EXTENSION_BIN" -type l -name "*.so")
+        for link in $LINKS
+        do
+            link_full=`dirname $link`/`readlink $link`
+            link_full=${link_full#$PACKAGE_EXTENSION_BIN}
+            echo "Linking the link $link to the full path link $link_full"
+            sudo ln -sf "$link_full" "$link"
+        done
+   fi
+
+   echo -e "Checking if the extension has a tce.installed script ... \c"
+   if [ -f "$PACKAGE_EXTENSION_TCEINSTALLED" ]; then
+        echo "yes"
+        echo "Installing the extension tce.installed script"
+        sudo install -D -m 775 "$PACKAGE_EXTENSION_TCEINSTALLED" "$PACKAGE_EXTENSION_BIN/usr/local/tce.installed/$PACKAGE_EXTENSION_NAME" || return 1
+        sudo chown -R root:staff "$PACKAGE_EXTENSION_BIN/usr/local/tce.installed" || return 1
+        sudo chmod -R 775 "$PACKAGE_EXTENSION_BIN/usr/local/tce.installed" || return 1
+   else
+        echo "no"
+   fi
+
+   echo -e "Checking if the extension icon is set ... \c"
+   if [ -n "$PACKAGE_EXTENSION_ICON" ]; then
+        echo "yes"
+
+        if [ -n "$PACKAGE_EXTENSION_DESKTOP_ORIG" ] &&
+           [ "$PACKAGE_EXTENSION_DESKTOP_ORIG" != "$PACKAGE_EXTENSION_DESKTOP" ]; then
+             [ -f "$PACKAGE_EXTENSION_DESKTOP_ORIG" ] || { echo "Original desktop file $PACKAGE_EXTENSION_DESKTOP_ORIG not found" ; return 1; }
+             echo "Renaming desktop file to match with extension name"
+             sudo install -Dm644 "$PACKAGE_EXTENSION_DESKTOP_ORIG" "$PACKAGE_EXTENSION_DESKTOP"
+             sudo rm "$PACKAGE_EXTENSION_DESKTOP_ORIG"
+        fi
+
+        echo -e "Checking if the extension desktop file exists ... \c"
+        if [ -f "$PACKAGE_EXTENSION_DESKTOP" ]; then
+             echo "yes"
+
+             echo -e "Checking if the extension desktop file has new line at the end ... \c"
+             if [ "$(tail -c 1 $PACKAGE_EXTENSION_DESKTOP)" = "" ]; then
+                  echo "yes"
+             else
+                  echo "no"
+                  echo "Adding new line at the end of extension desktop file"
+                  sudo sh -c "echo >> $PACKAGE_EXTENSION_DESKTOP"
+             fi
+
+             echo -e "Checking if the extension desktop has X-FullPathIcon line ... \c"
+             if [ $(grep "X-FullPathIcon=" "$PACKAGE_EXTENSION_DESKTOP") ]; then
+                  echo "yes"
+                  echo "Deleting the line with X-FullPathIcon"
+                  sudo sed -i -e "/X-FullPathIcon=/d" "$PACKAGE_EXTENSION_DESKTOP"
+             else
+                  echo "no"
+             fi
+
+             echo "Adding the extension icon to the extension desktop file"
+             sudo sh -c "echo \"X-FullPathIcon=$PACKAGE_EXTENSION_ICON\" >> $PACKAGE_EXTENSION_DESKTOP" || return 1
+        else
+             echo "no"
+             echo "Error! The extension desktop file can not be found but the icon is set."
+             return 1
+        fi
+   else
+        echo "no"
+   fi
+
+   echo "Cleaning the package extension bin temporary directory"
+   sudo rm -rf "$PACKAGE_EXTENSION_BIN_TEMP"
+
+   return 0
+
+}
+
+this_main() {
+
+   echo "---------------------------------------------------------------"
+   echo ""
+   echo "Splitting the package $PACKAGE extensions ..."
+   echo ""
+   echo "---------------------------------------------------------------"
+
+   for EXTENSION in $EXTENSIONS
+   do
+       set_extension
+
+       echo "---------------------------------------------------------------"
+       echo "Splitting the package extension $PACKAGE_EXTENSION_NAME"
+       echo "---------------------------------------------------------------"
+
+       echo "Cleaning the package bin temporary directory"
+       [ -d "$PACKAGE_BIN_TEMP" ] && sudo rm -rf "$PACKAGE_BIN_TEMP"
+       mkdir -p "$PACKAGE_BIN_TEMP" || return 1
+
+       this_split
+       if [ "$?" -gt 0 ]; then
+            echo "---------------------------------------------------------------"
+            echo "Error! splitting the package extension $PACKAGE_EXTENSION_NAME failed"
+            echo "---------------------------------------------------------------"
+
+            return 1
+       else
+            echo "---------------------------------------------------------------"
+            echo "Splitting the package extension $PACKAGE_EXTENSION_NAME successful"
+            echo "---------------------------------------------------------------"
+       fi
+   done
+
+   echo "---------------------------------------------------------------"
+   echo ""
+   echo "Splitted the package $PACKAGE extensions successfully."
+   echo ""
+   echo "---------------------------------------------------------------"
+
+   return 0
+
+}
+
+[ -f "$PACKAGE_SPLIT_STAMP" ] && sudo rm -f "$PACKAGE_SPLIT_STAMP"
+
+echo -e "${MESSAGE_COLOR}Splitting the package ${MESSAGE_COLOR_H}$PACKAGE${MESSAGE_COLOR} extensions ... ${NORMAL}\c"
+this_main > "$PACKAGE_MESSAGE_LOG" 2>&1
+if [ "$?" -gt 0 ]; then
+     echo "${ERROR_COLOR}failed!${NORMAL}"
+     echo "${WARNING_COLOR}For details: ${WARNING_COLOR_H}buildit --print message${NORMAL}"
+     exit 1
+fi
+echo "${MESSAGE_COLOR_H}successful!${NORMAL}"
+
+touch "$PACKAGE_SPLIT_STAMP"
+
+exit 0
+

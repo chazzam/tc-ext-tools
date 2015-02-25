@@ -1,0 +1,90 @@
+#!/bin/sh
+
+############################################################################
+#                                                                          #
+#                      installit: installs the package                     #
+#                                                                          #
+############################################################################
+
+#
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 2 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+#  Copyright (c) 2011 Sercan Arslan <arslanserc@gmail.com>
+#
+
+. /etc/init.d/tc-functions
+
+TET_ROOT="$(dirname $0)/.."
+
+if [ -f "$TET_ROOT/share/tet/functions.sh" ]; then
+     . "$TET_ROOT/share/tet/functions.sh"
+else
+     echo "${RED}$(basename $0):${BLUE} tc-ext-tools functions file not found!${NORMAL}"
+     exit 1
+fi
+
+if [ -n "$HAVE_TET_COMPILE" -a ! -f "$PACKAGE_COMPILE_STAMP" ]; then
+     echo "${ERROR_COLOR}You must compile it first!${NORMAL}"
+     exit 1
+fi
+
+this_main() {
+
+   echo "---------------------------------------------------------------"
+   echo ""
+   echo "Installing the package $PACKAGE ..."
+   echo ""
+   echo "---------------------------------------------------------------"
+
+   echo "Cleaning the package install root directory"
+   [ -d "$PACKAGE_INSTALL_ROOT" ] && rm -rf "$PACKAGE_INSTALL_ROOT"
+
+   echo "---------------------------------------------------------------"
+   echo "Executing the package build install function"
+   echo "---------------------------------------------------------------"
+
+   cd "$PACKAGE_SOURCE_TOPDIR"
+   build_install > "$PACKAGE_INSTALL_LOG" 2>&1 || return 1
+
+   if [ -d "$PACKAGE_INSTALL_ROOT" ]; then
+        echo "Creating the package files list"
+        su "$TCUSER" -c "cd $PACKAGE_INSTALL_ROOT;sudo find * -not -type d | sort > $PACKAGE_FILES_LIST" || return 1
+   fi
+
+   echo "---------------------------------------------------------------"
+   echo ""
+   echo "Installed the package $PACKAGE successfully."
+   echo "For details: buildit --print install"
+   echo ""
+   echo "---------------------------------------------------------------"
+
+   return 0
+
+}
+
+[ -f "$PACKAGE_INSTALL_STAMP" ] && sudo rm -f "$PACKAGE_INSTALL_STAMP"
+
+echo -e "${MESSAGE_COLOR}Installing the package ${MESSAGE_COLOR_H}$PACKAGE${MESSAGE_COLOR} ... ${NORMAL}\c"
+this_main > "$PACKAGE_MESSAGE_LOG" 2>&1
+if [ "$?" -gt 0 ]; then
+     echo "${ERROR_COLOR}failed!${NORMAL}"
+     echo "${WARNING_COLOR}For details: ${WARNING_COLOR_H}buildit --print install${NORMAL}"
+     exit 1
+fi
+echo "${MESSAGE_COLOR_H}successful!${NORMAL}"
+
+touch "$PACKAGE_INSTALL_STAMP"
+
+exit 0
+

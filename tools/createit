@@ -1,0 +1,168 @@
+#!/bin/sh
+
+############################################################################
+#                                                                          #
+#               createit: Creates the package extensions                   #
+#                                                                          #
+############################################################################
+
+#
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 2 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+#  Copyright (c) 2011 Sercan Arslan <arslanserc@gmail.com>
+#
+
+. /etc/init.d/tc-functions
+
+TET_ROOT="$(dirname $0)/.."
+
+if [ -f "$TET_ROOT/share/tet/functions.sh" ]; then
+     . "$TET_ROOT/share/tet/functions.sh"
+else
+     echo "${RED}$(basename $0):${BLUE} tc-ext-tools functions file not found!${NORMAL}"
+     exit 1
+fi
+
+if [ -n "$HAVE_TET_SPLIT" -a ! -f "$PACKAGE_SPLIT_STAMP" ]; then
+     echo "${ERROR_COLOR}You must split it first!${NORMAL}"
+     exit 1
+fi
+
+if [ -n "$HAVE_TET_STRIP" -a ! -f "$PACKAGE_STRIP_STAMP" ]; then
+     echo "${ERROR_COLOR}You must strip it first!${NORMAL}"
+     exit 1
+fi
+
+this_create() {
+
+   echo "Cleaning the package bin directory extension files"
+   sudo rm -f "$PACKAGE_BIN"/*.tcz*
+
+   cd "$PACKAGE_BIN"
+
+   echo "Creating the extension tcz file"
+   sudo mksquashfs "$PACKAGE_EXTENSION_NAME" "${PACKAGE_EXTENSION_NAME}.tcz" || return 1
+
+   echo "Creating the extension md5 sum"
+   md5sum "${PACKAGE_EXTENSION_NAME}.tcz" > "${PACKAGE_EXTENSION_NAME}.tcz.md5.txt" || return 1
+
+   echo "Creating the extension zsync file"
+   sudo zsyncmake "${PACKAGE_EXTENSION_NAME}.tcz"
+
+   cd "$PACKAGE_EXTENSION_BIN"
+
+   echo "Creating the extension list file"
+   sudo find * -not -type d | sort > "$PACKAGE_BIN/${PACKAGE_EXTENSION_NAME}.tcz.list"
+
+   echo "Cleaning the extension pkg directory"
+   [ -d "$PACKAGE_EXTENSION_PKG" ] && sudo rm -rf "$PACKAGE_EXTENSION_PKG"
+   mkdir -p "$PACKAGE_EXTENSION_PKG"
+
+   echo "Copying the extension files to the extension pkg directory"
+   cp -f "$PACKAGE_BIN/${PACKAGE_EXTENSION_NAME}".tcz* "$PACKAGE_EXTENSION_PKG" || return 1
+
+   echo -e "Checking if the extension has a dep file and is not empty ... \c"
+   if [ -f "$PACKAGE_EXTENSION_DEP" ] && [ -s "$PACKAGE_EXTENSION_DEP" ]; then
+        echo "yes"
+        [ -f "$PACKAGE_EXTENSION_TCZ_DEP" ] && rm -f "$PACKAGE_EXTENSION_TCZ_DEP"
+        for dep in `cat $PACKAGE_EXTENSION_DEP`
+        do
+            if [ "${dep#\#}" != "$dep" ]; then
+                 continue
+            fi
+            dep=$(eval echo "$dep")
+            echo "$dep" >> "$PACKAGE_EXTENSION_TCZ_DEP"
+        done
+   else
+        echo "no"
+   fi
+
+   echo "Cleaning the package bin directory extension files"
+   sudo rm -f "$PACKAGE_BIN"/*.tcz*
+
+   return 0
+
+}
+
+this_main() {
+
+   echo "---------------------------------------------------------------"
+   echo ""
+   echo "Creating the package $PACKAGE extensions ..."
+   echo ""
+   echo "---------------------------------------------------------------"
+
+   echo "---------------------------------------------------------------"
+   echo "Cleaning the package pkg directory"
+   [ -d "$PACKAGE_PKG" ] && sudo rm -rf "$PACKAGE_PKG"
+   mkdir -p "$PACKAGE_PKG"
+   echo "---------------------------------------------------------------"
+
+   for EXTENSION in $EXTENSIONS
+   do
+       set_extension
+
+       echo "---------------------------------------------------------------"
+       echo "Creating the package extension $PACKAGE_EXTENSION_NAME"
+       echo "---------------------------------------------------------------"
+
+       echo -e "Checking if the package extension is splitted before ... \c"
+       if [ -d "$PACKAGE_EXTENSION_BIN" ]; then
+            echo "yes"
+       else
+            echo "no"
+            echo "---------------------------------------------------------------"
+            echo "Error! You must split it first!"
+            echo "---------------------------------------------------------------"
+            return 1
+       fi
+
+       this_create
+       if [ "$?" -gt 0 ]; then
+            echo "---------------------------------------------------------------"
+            echo "Error! Creating the package extension $PACKAGE_EXTENSION_NAME failed"
+            echo "---------------------------------------------------------------"
+            return 1
+       else
+            echo "---------------------------------------------------------------"
+            echo "Creating the package extension $PACKAGE_EXTENSION_NAME successful"
+            echo "---------------------------------------------------------------"
+       fi
+   done
+
+   echo "---------------------------------------------------------------"
+   echo ""
+   echo "Created the package $PACKAGE extensions successfully."
+   echo ""
+   echo "---------------------------------------------------------------"
+
+   return 0
+
+}
+
+[ -f "$PACKAGE_CREATE_STAMP" ] && sudo rm -f "$PACKAGE_CREATE_STAMP"
+
+echo -e "${MESSAGE_COLOR}Creating the package ${MESSAGE_COLOR_H}$PACKAGE${MESSAGE_COLOR} extensions ... ${NORMAL}\c"
+this_main > "$PACKAGE_MESSAGE_LOG" 2>&1
+if [ "$?" -gt 0 ]; then
+     echo "${ERROR_COLOR}failed!${NORMAL}"
+     echo "${WARNING_COLOR}For details: ${WARNING_COLOR_H}buildit --print message${NORMAL}"
+     exit 1
+fi
+echo "${MESSAGE_COLOR_H}successful!${NORMAL}"
+
+touch "$PACKAGE_CREATE_STAMP"
+
+exit 0
+

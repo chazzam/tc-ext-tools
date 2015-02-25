@@ -1,0 +1,342 @@
+#!/bin/sh
+
+############################################################################
+#                                                                          #
+#                      buildit: Builds the package                         #
+#                                                                          #
+############################################################################
+
+#
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 2 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+#  Copyright (c) 2011 Sercan Arslan <arslanserc@gmail.com>
+#
+
+. /etc/init.d/tc-functions
+
+TET_ROOT="$(dirname $0)/.."
+
+if [ -f "$TET_ROOT/share/tet/functions.sh" ]; then
+     . "$TET_ROOT/share/tet/functions.sh"
+else
+     echo "${RED}$(basename $0):${BLUE} tc-ext-tools functions file not found!${NORMAL}"
+     exit 1
+fi
+
+print_usage(){
+   cat << EOF
+${ERROR_COLOR}Usage:${NORMAL}
+
+      ${WARNING_COLOR}buildit ${WARNING_COLOR_H}<function> <options>
+
+      ${MESSAGE_COLOR}where available functions are:
+
+             ${WARNING_COLOR}--clean${MESSAGE_COLOR} to clean files from previous build.
+             ${WARNING_COLOR}--load${MESSAGE_COLOR} to load package build dependencies.
+             ${WARNING_COLOR}--prepare${MESSAGE_COLOR} to prepare kernel source for building kernel modules.
+             ${WARNING_COLOR}--download${MESSAGE_COLOR} to download package source.
+             ${WARNING_COLOR}--convert${MESSAGE_COLOR} to convert package source.
+             ${WARNING_COLOR}--unpack${MESSAGE_COLOR} to unpack package source.
+             ${WARNING_COLOR}--patch${MESSAGE_COLOR} to patch package source.
+             ${WARNING_COLOR}--configure${MESSAGE_COLOR} to configure package.
+             ${WARNING_COLOR}--compile${MESSAGE_COLOR} to compile package.
+             ${WARNING_COLOR}--install${MESSAGE_COLOR} to install package.
+             ${WARNING_COLOR}--split${MESSAGE_COLOR} to split package into extensions.
+             ${WARNING_COLOR}--strip${MESSAGE_COLOR} to strip extension files.
+             ${WARNING_COLOR}--create${MESSAGE_COLOR} to create extensions.
+             ${WARNING_COLOR}--generate${MESSAGE_COLOR} to generate extension info files.
+             ${WARNING_COLOR}--check${MESSAGE_COLOR} to check extensions.
+             ${WARNING_COLOR}--test${MESSAGE_COLOR} to test extensions.
+             ${WARNING_COLOR}--package${MESSAGE_COLOR} to create package tarball.
+             ${WARNING_COLOR}--encrypt${MESSAGE_COLOR} to encrypt package tarball.
+             ${WARNING_COLOR}--custom <function>${MESSAGE_COLOR} to execute custom defined function. Where ${MESSAGE_COLOR_H}build_<function>${MESSAGE_COLOR} is the name of the custom function which must be defined in the package build file.
+             ${WARNING_COLOR}--print <options>${MESSAGE_COLOR} to print build log. See ${MESSAGE_COLOR_H}buildit --print help${MESSAGE_COLOR} for details.
+             ${WARNING_COLOR}--help${MESSAGE_COLOR} to print this message.
+${NORMAL}
+EOF
+
+   exit 0
+}
+
+clean_it() {
+   cleanit || exit 1
+}
+
+load_it() {
+   loadit || exit 1
+}
+
+prepare_it() {
+   if [ -f "$PACKAGE_PREPARE_STAMP" ]; then
+        echo "${WARNING_COLOR}The linux kernel ${WARNING_COLOR_H}$KERNEL${WARNING_COLOR} source is already prepared.${NORMAL}"
+        exit 0
+   fi
+   prepareit || exit 1
+}
+
+download_it() {
+   if [ -f "$PACKAGE_SOURCE_ORIG" -a -f "$PACKAGE_DOWNLOAD_STAMP" ] || [ -f "$PACKAGE_SOURCE_CONV" -a -f "$PACKAGE_CONVERT_STAMP" ] ||
+      [ "$PACKAGE_SOURCE_URL_TYPE" = "custom" -a -f "$PACKAGE_DOWNLOAD_STAMP" ]; then
+        echo "${WARNING_COLOR}The package ${WARNING_COLOR_H}$PACKAGE${WARNING_COLOR} source is already downloaded.${NORMAL}"
+        exit 0
+   fi
+   downloadit || exit 1
+}
+
+convert_it() {
+   if [ -f "$PACKAGE_SOURCE_CONV" -a -f "$PACKAGE_CONVERT_STAMP" ]; then
+        echo "${WARNING_COLOR}The package ${WARNING_COLOR_H}$PACKAGE${WARNING_COLOR} source is already converted.${NORMAL}"
+        exit 0
+   fi
+   convertit || exit 1
+}
+
+unpack_it() {
+   unpackit || exit 1
+}
+
+patch_it() {
+   patchit || exit 1
+}
+
+configure_it() {
+   configureit || exit 1
+}
+
+compile_it() {
+   compileit || exit 1
+}
+
+install_it() {
+   sudo -E installit || exit 1
+}
+
+split_it() {
+   splitit || exit 1
+}
+
+strip_it() {
+   stripit || exit 1
+}
+
+create_it() {
+   createit || exit 1
+}
+
+generate_it() {
+   generateit || exit 1
+}
+
+check_it() {
+   checkit || exit 1
+}
+
+test_it() {
+   testit || exit 1
+}
+
+package_it() {
+   packageit || exit 1
+}
+
+encrypt_it() {
+   encryptit || exit 1
+}
+
+build_custom() {
+   FUNCTION="$1"
+   if [ -z "$FUNCTION" ]; then
+        echo "${ERROR_COLOR}Error! You need to specify the name of the custom function.${NORMAL}"
+        exit 1
+   fi
+
+   echo -e "${MESSAGE_COLOR}Executing the package ${MESSAGE_COLOR_H}$PACKAGE${MESSAGE_COLOR} custom build function $FUNCTION ... ${NORMAL}\c"
+   build_${FUNCTION} > "$PACKAGE_MESSAGE_LOG" 2>&1
+   if [ "$?" -gt 0 ]; then
+        echo "${ERROR_COLOR}failed!${NORMAL}"
+        echo "${WARNING_COLOR}For details: ${WARNING_COLOR_H}buildit --print message${NORMAL}"
+        exit 1
+   fi
+   echo "${MESSAGE_COLOR_H}successful!${NORMAL}"
+}
+
+build_it() {
+   set_date; SECONDS_BEFORE="$SECONDS"
+   echo "${MESSAGE_COLOR}Building the package ${MESSAGE_COLOR_H}$PACKAGE${MESSAGE_COLOR} started at ${MESSAGE_COLOR_H}$TIME${NORMAL}"
+   clean_it
+   build_rules
+   set_date; SECONDS_AFTER="$SECONDS"
+   SECONDS_ELAPSED=`expr $SECONDS_AFTER - $SECONDS_BEFORE`
+   echo "${MESSAGE_COLOR}Building the package ${MESSAGE_COLOR_H}$PACKAGE${MESSAGE_COLOR} finished at ${MESSAGE_COLOR_H}$TIME${MESSAGE_COLOR} in ${MESSAGE_COLOR_H}${SECONDS_ELAPSED}${MESSAGE_COLOR} seconds${NORMAL}"
+}
+
+print_it() {
+   case "$1" in
+       configure)
+                if [ -f "$PACKAGE_CONFIGURE_LOG" ]; then
+                     cat "$PACKAGE_CONFIGURE_LOG"
+                fi
+                ;;
+       compile)
+                if [ -f "$PACKAGE_COMPILE_LOG" ]; then
+                     cat "$PACKAGE_COMPILE_LOG"
+                fi
+                ;;
+       install)
+                if [ -f "$PACKAGE_INSTALL_LOG" ]; then
+                     cat "$PACKAGE_INSTALL_LOG"
+                fi
+                ;;
+       build)
+                if [ -f "$PACKAGE_BUILD_LOG" ]; then
+                     cat "$PACKAGE_BUILD_LOG"
+                     echo -e "${NORMAL}\c"
+                fi
+                ;;
+       message)
+                if [ -f "$PACKAGE_MESSAGE_LOG" ]; then
+                     cat "$PACKAGE_MESSAGE_LOG"
+                     echo -e "${NORMAL}\c"
+                fi
+                ;;
+       help|*)
+                echo "${ERROR_COLOR}Usage:"
+                echo ""
+                echo "        ${WARNING_COLOR}buildit --print ${WARNING_COLOR_H}<option>"
+                echo ""
+                echo "        ${MESSAGE_COLOR}where available options are:"
+                echo ""
+                echo "                  ${WARNING_COLOR_H}configure${MESSAGE_COLOR} to print configure log."
+                echo "                  ${WARNING_COLOR_H}compile${MESSAGE_COLOR} to print compile log."
+                echo "                  ${WARNING_COLOR_H}install${MESSAGE_COLOR} to print install log."
+                echo "                  ${WARNING_COLOR_H}build${MESSAGE_COLOR} to print build log."
+                echo "                  ${WARNING_COLOR_H}message${MESSAGE_COLOR} to print message log."
+                echo "${NORMAL}"
+                ;;
+   esac
+}
+
+tet_load() {
+   buildit --load || exit 1
+}
+
+tet_prepare() {
+   buildit --prepare || exit 1
+}
+
+tet_download() {
+   buildit --download || exit 1
+}
+
+tet_convert() {
+   buildit --convert || exit 1
+}
+
+tet_unpack() {
+   buildit --unpack || exit 1
+}
+
+tet_patch() {
+   buildit --patch || exit 1
+}
+
+tet_configure() {
+   buildit --configure || exit 1
+}
+
+tet_compile() {
+   buildit --compile || exit 1
+}
+
+tet_install() {
+   buildit --install || exit 1
+}
+
+tet_split() {
+   buildit --split || exit 
+}
+
+tet_strip() {
+   buildit --strip || exit 1
+}
+
+tet_create() {
+   buildit --create || exit 1
+}
+
+tet_generate() {
+   buildit --generate || exit 1
+}
+
+tet_check() {
+   buildit --check || exit 1
+}
+
+tet_test() {
+   buildit --test || exit 1
+}
+
+tet_package() {
+   buildit --package || exit 1
+}
+
+tet_encrypt() {
+   buildit --encrypt || exit 1
+}
+
+tet_custom() {
+   buildit --custom "$1" || exit 1
+}
+
+ARG="$1"
+
+if [ -z "$ARG" ]; then
+     if build_it | tee "$PACKAGE_BUILD_LOG"; then
+        exit 0
+     else
+        exit 1
+     fi
+fi
+
+while [ -n "$ARG" ]
+do
+    case "$ARG" in
+      --clean) clean_it ;;
+      --prepare) prepare_it ;;
+      --download) download_it ;;
+      --convert) convert_it ;;
+      --unpack) unpack_it ;;
+      --load) load_it ;;
+      --patch) patch_it ;;
+      --configure) configure_it ;;
+      --compile) compile_it ;;
+      --install) install_it ;;
+      --split) split_it ;;
+      --strip) strip_it ;;
+      --create) create_it ;;
+      --generate) generate_it ;;
+      --check) check_it ;;
+      --test) test_it ;;
+      --package) package_it ;;
+      --encrypt) encrypt_it ;;
+      --print) print_it "$2"; shift;;
+      --custom) build_custom "$2"; shift;;
+      --help|*) print_usage ;;
+    esac
+    shift
+    ARG="$1"
+done
+
+exit 0
+

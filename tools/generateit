@@ -1,0 +1,304 @@
+#!/bin/sh
+
+############################################################################
+#                                                                          #
+#         generateit: Generates the package extensions' info files         #
+#                                                                          #
+############################################################################
+
+#
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 2 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+#  Copyright (c) 2011 Sercan Arslan <arslanserc@gmail.com>
+#
+
+. /etc/init.d/tc-functions
+
+TET_ROOT="$(dirname $0)/.."
+
+if [ -f "$TET_ROOT/share/tet/functions.sh" ]; then
+     . "$TET_ROOT/share/tet/functions.sh"
+else
+     echo "${RED}$(basename $0):${BLUE} tc-ext-tools functions file not found!${NORMAL}"
+     exit 1
+fi
+
+if [ -n "$HAVE_TET_CREATE" -a ! -f "$PACKAGE_CREATE_STAMP" ]; then
+     echo "${ERROR_COLOR}You must create it first!${NORMAL}"
+     exit 1
+fi
+
+this_download_info(){
+
+   [ -d "$PACKAGE_EXTENSION_PKG_TEMP" ] || mkdir -p "$PACKAGE_EXTENSION_PKG_TEMP"
+   wget --no-check-certificate --tries=3 "$TCZREPO_EXTENSION_INFO" -P "$PACKAGE_EXTENSION_PKG_TEMP" || return 1
+
+}
+
+this_parse_line(){
+
+   # skip NL and EOF characters
+   if [ "$line" = "" -o "$line" = "EOF" ]; then
+      return 0
+   fi
+
+   if [ "${line#Title:}" != "$line" ]; then
+      TITLE="${line#Title:}"
+      TITLE=`echo "$TITLE" | sed "s/\t\t//"`
+   elif [ "${line#Description:}" != "$line" ]; then
+      DESCRIPTION="${line#Description:}"
+      DESCRIPTION=`echo "$DESCRIPTION" | sed "s/\t//"`
+      blockno=`expr $blockno + 1`
+   elif [ "${line#Version:}" != "$line" ]; then
+      VERSION="${line#Version:}"
+      VERSION=`echo "$VERSION" | sed "s/\t//"`
+      blockno=`expr $blockno + 1`
+   elif [ "${line#Author:}" != "$line" ]; then
+      AUTHOR="${line#Author:}"
+      AUTHOR=`echo "$AUTHOR" | sed "s/\t\t//"`
+      blockno=`expr $blockno + 1`
+   elif [ "${line#Original-site:}" != "$line" ]; then
+      SITE="${line#Original-site:}"
+      SITE=`echo "$SITE" | sed "s/\t//"`
+      blockno=`expr $blockno + 1`
+   elif [ "${line#Copying-policy:}" != "$line" ]; then
+      COPYING="${line#Copying-policy:}"
+      COPYING=`echo "$COPYING" | sed "s/\t//"`
+      blockno=`expr $blockno + 1`
+   elif [ "${line#Size:}" != "$line" ]; then
+      SIZE="${line#Size:}"
+      SIZE=`echo "$SIZE" | sed "s/\t\t//"`
+      blockno=`expr $blockno + 1`
+   elif [ "${line#Extension_by:}" != "$line" ]; then
+      MAINTAINER="${line#Extension_by:}"
+      MAINTAINER=`echo "$MAINTAINER" | sed "s/\t//"`
+      blockno=`expr $blockno + 1`
+   elif [ "${line#Tags:}" != "$line" ]; then
+      TAGS="${line#Tags:}"
+      TAGS=`echo "$TAGS" | sed "s/\t\t//"`
+      blockno=`expr $blockno + 1`
+   elif [ "${line#Comments:}" != "$line" ]; then
+      COMMENTS="${line#Comments:}"
+      COMMENTS=`echo "$COMMENTS" | sed "s/\t//"`
+      blockno=`expr $blockno + 1`
+   elif [ "${line#Change-log:}" != "$line" ]; then
+      CHANGELOG="${line#Change-log:}"
+      CHANGELOG=`echo "$CHANGELOG" | sed "s/\t//"`
+      blockno=`expr $blockno + 1`
+   elif [ "${line#Current:}" != "$line" ]; then
+      CURRENT="${line#Current:}"
+      CURRENT=`echo "$CURRENT" | sed "s/\t//"`
+      blockno=`expr $blockno + 1`
+   else
+      case "$blockno" in
+        0) TITLE=`echo -e "${TITLE}\n${line}"` ;;
+        1) DESCRIPTION=`echo -e "${DESCRIPTION}\n${line}"` ;;
+        2) VERSION=`echo -e "${VERSION}\n${line}"` ;;
+        3) AUTHOR=`echo -e "${AUTHOR}\n${line}"` ;;
+        4) SITE=`echo -e "${SITE}\n${line}"` ;;
+        5) COPYING=`echo -e "${COPYING}\n${line}"` ;;
+        6) SIZE=`echo -e "${SIZE}\n${line}"` ;;
+        7) MAINTAINER=`echo -e "${MAINTAINER}\n${line}"` ;;
+        8) TAGS=`echo -e "${TAGS}\n${line}"` ;;
+        9) COMMENTS=`echo -e "${COMMENTS}\n${line}"` ;;
+        10) CHANGELOG=`echo -e "${CHANGELOG}\n${line}"` ;;
+        11) CURRENT=`echo -e "${CURRENT}\n${line}"` ;;
+      esac
+   fi
+
+}
+
+this_cat_info(){
+
+   if [ "$CHANGELOG" == "---" -o "$CHANGELOG" == "" ]; then
+      cat > "$PACKAGE_EXTENSION_TEMP_COMMON" << EOF
+CHANGELOG="${CURRENT}"
+EOF
+
+   else
+      cat > "$PACKAGE_EXTENSION_TEMP_COMMON" << EOF
+CHANGELOG="${CHANGELOG}
+		${CURRENT}"
+EOF
+   fi
+
+}
+
+this_parse_info(){
+
+   lineno=0
+   blockno=0
+
+   IFS=" "
+
+   (cat "$PACKAGE_EXTENSION_TEMP_INFO"; echo -e "\nEOF") | while read line
+   do
+     lineno=`expr $lineno + 1`
+     this_parse_line
+     if [ "$line" = "EOF" ]; then
+       this_cat_info
+     fi
+   done
+
+}
+
+this_generate() {
+
+   echo "Setting the extension description."
+   [ ! "${EXTENSION%-bin}" = "$EXTENSION" ] && DESCRIPTION="${DESCRIPTION%.}, utilities."
+   [ ! "${EXTENSION%-lib}" = "$EXTENSION" ] && DESCRIPTION="${DESCRIPTION%.}, shared libraries."
+   [ ! "${EXTENSION%-dev}" = "$EXTENSION" ] && DESCRIPTION="${DESCRIPTION%.}, development files."
+   [ ! "${EXTENSION%-dbg}" = "$EXTENSION" ] && DESCRIPTION="${DESCRIPTION%.}, debugging symbols."
+   [ ! "${EXTENSION%-doc}" = "$EXTENSION" ] && DESCRIPTION="${DESCRIPTION%.}, documentation files."
+   [ ! "${EXTENSION%-src}" = "$EXTENSION" ] && DESCRIPTION="${DESCRIPTION%.}, source files."
+   [ ! "${EXTENSION%-python}" = "$EXTENSION" ] && DESCRIPTION="${DESCRIPTION%.}, python bindings."
+   [ ! "${EXTENSION%-locale}" = "$EXTENSION" ] && DESCRIPTION="${DESCRIPTION%.}, locale files."
+   [ ! "${EXTENSION%-gir}" = "$EXTENSION" ] && DESCRIPTION="${DESCRIPTION%.}, gobject introspection data."
+   [ ! "${EXTENSION%-$KERNEL}" = "$EXTENSION" ] && DESCRIPTION="${DESCRIPTION%.}, kernel module."
+
+   echo -e "Checking if the extension has a common file ... \c"
+   if [ -f "$PACKAGE_EXTENSION_COMMON" ]; then
+        echo "yes"
+        . "$PACKAGE_EXTENSION_COMMON"
+   else
+        echo "no"
+   fi
+
+   echo -e "Checking if the extension temp common exists ... \c"
+   if [ -f "$PACKAGE_EXTENSION_TEMP_COMMON" ] && 
+      [ "$CHANGELOG" == "---" -o "$CHANGELOG" == "" ]; then
+        echo "yes"
+        . "$PACKAGE_EXTENSION_TEMP_COMMON"
+   else
+        echo "no"
+   fi
+
+   echo "Setting the other extension info variables"
+   CURRENT="$DATE $CURRENT"
+   SIZE=$(du -h "$PACKAGE_EXTENSION_TCZ" | cut -f1)
+   [ -z "$TAGS" ] && TAGS="$DESCRIPTION"
+
+   echo "Creating the extension info"
+   cat > "$PACKAGE_EXTENSION_TCZ_INFO" << _EOF
+Title:		${PACKAGE_EXTENSION_NAME}.tcz
+Description:	${DESCRIPTION}
+Version:	${VERSION}
+Author:		${AUTHOR}
+Original-site:	${SITE}
+Copying-policy:	${COPYING}
+Size:		${SIZE}
+Extension_by:	${MAINTAINERS}
+Tags:		${TAGS}
+Comments:	${COMMENTS}
+Change-log:	${CHANGELOG}
+Current:	${CURRENT}
+_EOF
+
+   if [ "$?" -gt 0 ]; then
+        echo "Error! Creating the extension info failed"
+        return 1
+   fi
+
+   return 0
+
+}
+
+this_main() {
+
+   echo "---------------------------------------------------------------"
+   echo ""
+   echo "Generating the package $PACKAGE extension info files ..."
+   echo ""
+   echo "---------------------------------------------------------------"
+
+   echo "---------------------------------------------------------------"
+   echo "Cleaning the package pkg temporary directory"
+   echo "---------------------------------------------------------------"
+   [ -d "$PACKAGE_PKG_TEMP" ] && sudo rm -rf "$PACKAGE_PKG_TEMP"
+
+   for EXTENSION in $EXTENSIONS
+   do
+       set_extension
+
+       echo "---------------------------------------------------------------"
+       echo "Downloading the extension $PACKAGE_EXTENSION_NAME info from repository"
+       echo "---------------------------------------------------------------"
+       this_download_info
+       if [ "$?" -gt 0 ]; then
+            echo "Downloading the extension info failed! It does not exist or a network issue..."
+       else
+            echo "---------------------------------------------------------------"
+            echo "Parsing the extension info which is downloaded from the repository"
+            echo "---------------------------------------------------------------"
+            this_parse_info || return 1
+       fi
+
+       echo "---------------------------------------------------------------"
+       echo "Generating the extension $PACKAGE_EXTENSION_NAME info file."
+       echo "---------------------------------------------------------------"
+
+       echo -e "Checking if the extension is created before ... \c"
+       if [ -f "$PACKAGE_EXTENSION_TCZ" ]; then
+            echo "yes"
+       else
+            echo "no"
+            echo "---------------------------------------------------------------"
+            echo "Error! You must create it first."
+            echo "---------------------------------------------------------------"
+            return 1
+       fi
+
+       this_generate
+       if [ "$?" -gt 0 ]; then
+            echo "---------------------------------------------------------------"
+            echo "Error! Generating the extension $PACKAGE_EXTENSION_NAME info failed."
+            echo "---------------------------------------------------------------"
+            return 1
+       else
+            echo "---------------------------------------------------------------"
+            echo "Generating the extension $PACKAGE_EXTENSION_NAME info successful!"
+            echo "---------------------------------------------------------------"
+       fi
+   done
+
+   echo "---------------------------------------------------------------"
+   echo "Cleaning the package pkg temporary directory"
+   echo "---------------------------------------------------------------"
+   sudo rm -rf "$PACKAGE_PKG_TEMP"
+
+   echo "---------------------------------------------------------------"
+   echo ""
+   echo "Generated the package $PACKAGE extension info files successfully."
+   echo ""
+   echo "---------------------------------------------------------------"
+
+   return 0
+
+}
+
+[ -f "$PACKAGE_GENERATE_STAMP" ] && sudo rm -f "$PACKAGE_GENERATE_STAMP"
+
+echo -e "${MESSAGE_COLOR}Generating the package ${MESSAGE_COLOR_H}$PACKAGE${MESSAGE_COLOR} extension info files ... ${NORMAL}\c"
+this_main > "$PACKAGE_MESSAGE_LOG" 2>&1
+if [ "$?" -gt 0 ]; then
+     echo "${ERROR_COLOR}failed!${NORMAL}"
+     echo "${WARNING_COLOR}For details: ${WARNING_COLOR_H}buildit --print message${NORMAL}"
+     exit 1
+fi
+echo "${MESSAGE_COLOR_H}successful!${NORMAL}"
+
+touch "$PACKAGE_GENERATE_STAMP"
+
+exit 0
+

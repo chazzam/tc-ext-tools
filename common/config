@@ -1,0 +1,48 @@
+############################################################################
+#                                                                          #
+#               tc-ext-tools default configuration file                    #
+#                                                                          #
+############################################################################
+
+#
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 2 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+#  Copyright (c) 2011 Sercan Arslan <arslanserc@gmail.com>
+#
+
+# tc-ext-tools message colors
+MESSAGE_COLOR="${BLUE}"
+MESSAGE_COLOR_H="${CYAN}"
+WARNING_COLOR="${GREEN}"
+WARNING_COLOR_H="${YELLOW}"
+ERROR_COLOR="${RED}"
+ERROR_COLOR_H="${YELLOW}"
+
+# tc-ext-tools dependencies
+TET_DEPENDS="compiletc squashfs-tools-4.x tar wget xz intltool perl_xml_parser gettext libtool libtool-dev autoconf automake zsync"
+
+# default encryption key
+PACKAGE_ENCRYPTION_KEY="tinycore"
+
+# compiler and linker flags
+TET_CFLAGS="-march=i486 -mtune=i686 -Os -pipe"
+TET_CXXFLAGS="-march=i486 -mtune=i686 -Os -pipe"
+TET_LDFLAGS="-Wl,-O1"
+
+# default install prefix
+TET_PREFIX="usr/local"
+
+# packages database directory
+TET_PACKAGES_DATABASE="${HOME}/.local/share/tet/packages_db"
+

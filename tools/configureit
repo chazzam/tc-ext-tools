@@ -1,0 +1,86 @@
+#!/bin/sh
+
+############################################################################
+#                                                                          #
+#                    configureit: configures the package                   #
+#                                                                          #
+############################################################################
+
+#
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 2 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+#  Copyright (c) 2011 Sercan Arslan <arslanserc@gmail.com>
+#
+
+. /etc/init.d/tc-functions
+
+TET_ROOT="$(dirname $0)/.."
+
+if [ -f "$TET_ROOT/share/tet/functions.sh" ]; then
+     . "$TET_ROOT/share/tet/functions.sh"
+else
+     echo "${RED}$(basename $0):${BLUE} tc-ext-tools functions file not found!${NORMAL}"
+     exit 1
+fi
+
+if [ -n "$HAVE_TET_UNPACK" -a ! -f "$PACKAGE_UNPACK_STAMP" ]; then
+     echo "${ERROR_COLOR}You must unpack it first!${NORMAL}"
+     exit 1
+fi
+
+if [ -n "$HAVE_TET_PATCH" -a ! -f "$PACKAGE_PATCH_STAMP" ]; then
+     echo "${ERROR_COLOR}You must patch it first!${NORMAL}"
+     exit 1
+fi
+
+this_main() {
+
+   echo "---------------------------------------------------------------"
+   echo ""
+   echo "Configuring the package $PACKAGE ..."
+   echo ""
+   echo "---------------------------------------------------------------"
+
+   echo "---------------------------------------------------------------"
+   echo "Executing the package build configure function"
+   echo "---------------------------------------------------------------"
+   cd "$PACKAGE_SOURCE_TOPDIR"
+   build_configure > "$PACKAGE_CONFIGURE_LOG" 2>&1 || return 1
+
+   echo "---------------------------------------------------------------"
+   echo ""
+   echo "Configured the package $PACKAGE successfully."
+   echo "For details: buildit --print configure"
+   echo ""
+   echo "---------------------------------------------------------------"
+
+   return 0
+
+}
+
+[ -f "$PACKAGE_CONFIGURE_STAMP" ] && sudo rm -f "$PACKAGE_CONFIGURE_STAMP"
+
+echo -e "${MESSAGE_COLOR}Configuring the package ${MESSAGE_COLOR_H}$PACKAGE${MESSAGE_COLOR} ... ${NORMAL}\c"
+this_main > "$PACKAGE_MESSAGE_LOG" 2>&1
+if [ "$?" -gt 0 ]; then
+     echo "${ERROR_COLOR}failed!${NORMAL}"
+     echo "${WARNING_COLOR}For details: ${WARNING_COLOR_H}buildit --print configure${NORMAL}"
+     exit 1
+fi
+echo "${MESSAGE_COLOR_H}successful!${NORMAL}"
+
+touch "$PACKAGE_CONFIGURE_STAMP"
+
+exit 0
+

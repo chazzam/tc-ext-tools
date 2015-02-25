@@ -1,0 +1,94 @@
+############################################################################################
+#                                                                                          #
+#    package build functions: configure, compile, install, rules, and custom functions     #
+#                                                                                          #
+############################################################################################
+
+## configure
+build_configure() {
+
+   ## autotools
+   ./configure --prefix=/usr/local || return 1
+
+   ## cmake
+   #mkdir build
+   #cd build
+   #cmake -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=Release -DCMAKE_SKIP_RPATH=ON .. || return 1
+
+   ## python
+   #python setup.py configure || return 1
+
+   ## waf
+   #./waf configure --prefix=/usr/local || return 1
+
+   ## qmake
+   #qmake PREFIX="/usr/local" || return 1
+
+}
+
+## compile
+build_compile() {
+
+   ## cmake
+   #cd build
+   make || return 1
+
+   ## python
+   #python setup.py build || return 1
+
+   ## jam
+   #jam || return 1
+
+   ## waf
+   #./waf build || return 1
+
+   ## scons
+   #scons || return 1
+
+}
+
+## install
+build_install() {
+
+   ## cmake
+   #cd build
+   make DESTDIR="$I_ROOT" install || return 1
+   #make INSTALL_ROOT="$I_ROOT" install || return 1
+
+   ## python
+   #python setup.py install --prefix=/usr/local --root="$I_ROOT" || return 1
+
+   ## jam
+   #DESTDIR="$I_ROOT" jam install || return 1
+
+   ## waf
+   #./waf install --destdir="$I_ROOT" || return 1
+
+   ## scons
+   #scons prefix="/usr/local" install_root="$I_ROOT/usr/local" install || return 1
+
+
+}
+
+## rules
+build_rules() {
+
+   tet_load
+   tet_download
+   tet_convert
+   tet_unpack
+   tet_patch
+   tet_configure
+   tet_compile
+   tet_install
+   tet_split
+   tet_strip
+   tet_create
+   tet_generate
+   tet_check
+   tet_test
+   tet_package
+   tet_encrypt
+
+}
+

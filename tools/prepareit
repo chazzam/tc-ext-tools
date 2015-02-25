@@ -1,0 +1,205 @@
+#!/bin/sh
+
+############################################################################
+#                                                                          #
+#        prepareit: prepares the kernel source for building modules        #
+#                                                                          #
+############################################################################
+
+#
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either KERNEL_VER 2 of the License, or
+#  (at your option) any later KERNEL_VER.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+#  Copyright (c) 2011 Sercan Arslan <arslanserc@gmail.com>
+#
+
+. /etc/init.d/tc-functions
+
+TET_ROOT="$(dirname $0)/.."
+
+if [ -f "$TET_ROOT/share/tet/functions.sh" ]; then
+     . "$TET_ROOT/share/tet/functions.sh"
+else
+     echo "${RED}$(basename $0):${BLUE} tc-ext-tools functions file not found!${NORMAL}"
+     exit 1
+fi
+
+if [ -n "$HAVE_TET_LOAD" -a ! -f "$PACKAGE_LOAD_STAMP" ]; then
+     echo "${ERROR_COLOR}You must load it first!${NORMAL}"
+     exit 1
+fi
+
+this_patch() {
+
+   unset PATCHES
+
+   echo -e "Checking if the linux patches directory exists ... \c"
+   if [ -d "$LINUX_PATCHES" ]; then
+        echo "yes"
+        echo -e "Checking if the linux patches series file exists ... \c"
+        if [ -f "$LINUX_PATCHES/series" ]; then
+             echo "yes"
+             PATCHES=$(cat "$LINUX_PATCHES/series" | grep -v '^#')
+        else
+             echo "no"
+             PATCHES=$(ls "$LINUX_PATCHES")
+        fi
+   else
+        echo "no"
+   fi
+
+   if [ -n "$PATCHES" ]; then
+        echo "---------------------------------------------------------------"
+        echo "Patches found, applying patches ..."
+        echo "---------------------------------------------------------------"
+        for PATCH in $PATCHES
+        do
+           echo "---------------------------------------------------------------"
+           echo "Processing the patch $PATCH"
+           echo "---------------------------------------------------------------"
+
+           if [ ! -f "$LINUX_PATCHES/$PATCH" ]; then
+                echo "Skipping the patch $PATCH because it is not a file!"
+                continue
+           fi
+
+           echo -e "Detecting the patch level ... \c"
+           PATCH_LEVEL=1
+           for FILE in $(cat $LINUX_PATCHES/$PATCH | grep -e "---" -e "+++" | cut -f2 -d" "; cat $LINUX_PATCHES/$PATCH | grep -e "---" -e "+++" | cut -f2 -d" " | cut -f1 -s)
+           do
+               if [ -f "$LINUX_BUILD/$FILE" ]; then
+                    PATCH_LEVEL=0
+                    break
+               elif [ -f "$LINUX_BUILD/${FILE#*/}" ]; then
+                    PATCH_LEVEL=1
+                    break
+               elif [ -f "$LINUX_BUILD/${FILE#*/*/}" ]; then
+                    PATCH_LEVEL=2
+                    break
+               fi
+           done
+
+           echo "Applying the patch $PATCH with patch level $PATCH_LEVEL"
+           patch --directory="$LINUX_BUILD" -Np$PATCH_LEVEL -i "$LINUX_PATCHES/$PATCH" || return 1
+        done
+   else
+        echo "---------------------------------------------------------------"
+        echo "There is no patch available for the linux $KERNEL"
+        echo "---------------------------------------------------------------"
+        return 0
+   fi
+
+}
+
+this_prepare() {
+
+   [ -d "$TET_STORAGE_LINUX" ] || mkdir -p "$TET_STORAGE_LINUX"
+   cd "$TET_STORAGE_LINUX"
+
+   [ -d "$KERNEL" ] || mkdir -p "$KERNEL"
+   [ -d "$LINUX_DL" ] || mkdir -p "$LINUX_DL"
+
+   echo -e "Checking if the linux source is downloaded before ... \c"
+   if [ ! -f "${LINUX_DL}/${LINUX_SOURCE}" ]; then
+        echo "no"
+        echo -e "Checking if the linux source is a file ... \c"
+        if [ -f "${KERNEL_MIRROR}/${LINUX_SOURCE}" ]; then
+             echo "yes"
+             echo "Copying the linux source"
+             cp "${KERNEL_MIRROR}/${LINUX_SOURCE}" "${LINUX_DL}/${LINUX_SOURCE}" || return 1
+        else
+             echo "no"
+             echo "Downloading the linux source"
+             wget "${KERNEL_MIRROR}/${LINUX_SOURCE}" -O "${LINUX_DL}/${LINUX_SOURCE}" || return 1
+       fi
+   else
+        echo "yes"
+   fi
+
+   cd "$KERNEL"
+
+   echo "Cleaning the linux directory"
+   [ -d "$LINUX_DIR" ] && sudo rm -rf "$LINUX_DIR"
+
+   echo "Extracting the linux source"
+   tar -xf "${LINUX_DL}/${LINUX_SOURCE}" || return 1
+
+   echo "Patching the linux source"
+   this_patch || return 1
+
+   cd "$LINUX_DIR"
+
+   echo "Configuring the linux source"
+   cp -f "$LINUX_CONFIG" .config
+
+   if [ "$KERNEL_ARCH" = x86_64 ]; then
+        make ARCH="$KERNEL_ARCH" CROSS_COMPILE="$CROSS_COMPILE" oldconfig || return 1
+        echo "Compiling the linux source for building modules"
+        make ARCH="$KERNEL_ARCH" CROSS_COMPILE="$CROSS_COMPILE" modules_prepare || return 1
+   else
+        make oldconfig || return 1
+        echo "Compiling the linux source for building modules"
+        make modules_prepare || return 1
+   fi
+
+   touch "$LINUX_PREPARE_STAMP"
+
+   return 0
+
+}
+
+this_main() {
+
+   echo "---------------------------------------------------------------"
+   echo ""
+   echo "Preparing the linux kernel $KERNEL source ..."
+   echo ""
+   echo "---------------------------------------------------------------"
+
+   echo -e "Checking if the linux kernel source is prepared before ... \c"
+   if [ ! -f "$LINUX_PREPARE_STAMP" ]; then
+        echo "no"
+        this_prepare || return 1
+   else
+        echo "yes"
+   fi
+
+   echo "Creating the required symlinks in the root file system"
+   [ -d /usr/src ] || sudo mkdir -p /usr/src
+   sudo ln -sf "$LINUX_BUILD" /usr/src/linux || return 1
+   sudo ln -sf "$LINUX_BUILD" /lib/modules/${KERNEL}/build || return 1
+
+   echo "---------------------------------------------------------------"
+   echo ""
+   echo "Prepared the linux kernel $KERNEL source successfully."
+   echo ""
+   echo "---------------------------------------------------------------"
+
+   return 0
+
+}
+
+[ -f "$PACKAGE_PREPARE_STAMP" ] && sudo rm -f "$PACKAGE_PREPARE_STAMP"
+
+echo -e "${MESSAGE_COLOR}Preparing the linux kernel ${MESSAGE_COLOR_H}$KERNEL${MESSAGE_COLOR} source ... ${NORMAL}\c"
+this_main > "$PACKAGE_MESSAGE_LOG" 2>&1
+if [ "$?" -gt 0 ]; then
+     echo "${ERROR_COLOR}failed!${NORMAL}"
+     echo "${WARNING_COLOR}For details: ${WARNING_COLOR_H}buildit --print message${NORMAL}"
+     exit 1
+fi
+echo "${MESSAGE_COLOR_H}successful!${NORMAL}"
+
+touch "$PACKAGE_PREPARE_STAMP"
+
+exit 0
