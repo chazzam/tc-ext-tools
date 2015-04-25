@@ -29,8 +29,17 @@ WARNING_COLOR_H="${YELLOW}"
 ERROR_COLOR="${RED}"
 ERROR_COLOR_H="${YELLOW}"
 
+TC_VERSION="$(cat /usr/share/doc/tc/release.txt)"
+TC_VERSION="${TC_VERSION%%.*}"
+
 # tc-ext-tools dependencies
-TET_DEPENDS="compiletc squashfs-tools-4.x tar wget xz intltool perl_xml_parser gettext libtool libtool-dev autoconf automake zsync"
+TET_DEPENDS="compiletc tar wget xz intltool perl_xml_parser gettext libtool libtool-dev autoconf automake zsync"
+if [ "$TC_VERSION" == "6" ]; then
+  TET_DEPENDS="$TET_DEPENDS squashfs-tools"
+else
+  TET_DEPENDS="$TET_DEPENDS squashfs-tools-4.x"
+fi
+
 
 # default encryption key
 PACKAGE_ENCRYPTION_KEY="tinycore"
