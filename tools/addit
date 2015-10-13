@@ -151,7 +151,7 @@ MAINTAINERS="$PACKAGE_MAINTAINER"
 TAGS=""
 COMMENTS="---"
 CHANGELOG="---"
-CURRENT="First Version"
+CURRENT="First Version: svn${_DATE}"
 _EOF
 
         [ "$?" -gt 0 ] && return 1
@@ -172,7 +172,7 @@ MAINTAINERS="$PACKAGE_MAINTAINER"
 TAGS=""
 COMMENTS="---"
 CHANGELOG="---"
-CURRENT="First Version"
+CURRENT="First Version: git${_DATE}"
 _EOF
 
         [ "$?" -gt 0 ] && return 1
@@ -193,7 +193,7 @@ MAINTAINERS="$PACKAGE_MAINTAINER"
 TAGS=""
 COMMENTS="---"
 CHANGELOG="---"
-CURRENT="First Version"
+CURRENT="First Version: ${VERSION}"
 _EOF
 
         [ "$?" -gt 0 ] && return 1
@@ -220,6 +220,9 @@ _EOF
        if [ "${EXTENSION%-locale}" != "$EXTENSION" ]; then
           echo "${EXTENSION%-locale}.tcz" > "$PACKAGE_EXTENSIONS/$EXTENSION/dep" || return 1
           echo "$TET_PREFIX/share/locale" > "$PACKAGE_EXTENSIONS/$EXTENSION/install" || return 1
+       elif [ "${EXTENSION%-doc}" != "$EXTENSION" ]; then
+          echo "${EXTENSION%-doc}.tcz" > "$PACKAGE_EXTENSIONS/$EXTENSION/dep" || return 1
+          echo "$TET_PREFIX/share/man" > "$PACKAGE_EXTENSIONS/$EXTENSION/install" || return 1
        elif [ "${EXTENSION%-dev}" != "$EXTENSION" ]; then
           echo "${EXTENSION%-dev}.tcz" > "$PACKAGE_EXTENSIONS/$EXTENSION/dep" || return 1
           echo "$TET_PREFIX/include" > "$PACKAGE_EXTENSIONS/$EXTENSION/install" || return 1
@@ -236,17 +239,22 @@ _EOF
        fi
 
        HAS_DEV="$(echo $EXTENSIONS | grep ${EXTENSION}-dev)"
+       HAS_DOC="$(echo $EXTENSIONS | grep ${EXTENSION}-doc)"
        HAS_LOCALE="$(echo $EXTENSIONS | grep ${EXTENSION}-locale)"
        HAS_PYTHON="$(echo $EXTENSIONS | grep ${EXTENSION}-python)"
        HAS_GIR="$(echo $EXTENSIONS | grep ${EXTENSION}-gir)"
 
        if [ -n "$HAS_LOCALE" ] || [ -n "$HAS_DEV" ] ||
-          [ -n "$HAS_PYTHON" ] || [ -n "$HAS_GIR" ]; then
+          [ -n "$HAS_PYTHON" ] || [ -n "$HAS_GIR" ] || [ -n "$HAS_DOC" ] ; then
           echo "$TET_PREFIX" > "$PACKAGE_EXTENSIONS/$EXTENSION/install" || return 1
        fi
 
        if [ -n "$HAS_LOCALE" ]; then
           echo "x-$TET_PREFIX/share/locale" >> "$PACKAGE_EXTENSIONS/$EXTENSION/install" || return 1
+       fi
+
+       if [ -n "$HAS_DOC" ]; then
+          echo "x-$TET_PREFIX/share/man" >> "$PACKAGE_EXTENSIONS/$EXTENSION/install" || return 1
        fi
 
        if [ -n "$HAS_DEV" ]; then

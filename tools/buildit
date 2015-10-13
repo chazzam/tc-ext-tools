@@ -27,6 +27,14 @@
 
 TET_ROOT="$(dirname $0)/.."
 
+if [ "$1" != "" ]; then
+  if [ -d "$1" ]; then
+    CWD="$(pwd)"
+    cd "$1";
+    shift;
+  fi;
+fi
+
 if [ -f "$TET_ROOT/share/tet/functions.sh" ]; then
      . "$TET_ROOT/share/tet/functions.sh"
 else
@@ -338,5 +346,9 @@ do
     ARG="$1"
 done
 
+if [ "$CWD" != "" ]; then
+  cd "$CWD";
+fi;
+  
 exit 0
 
