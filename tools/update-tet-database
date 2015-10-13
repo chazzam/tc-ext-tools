@@ -1,0 +1,115 @@
+#!/bin/sh
+
+############################################################################
+#                                                                          #
+#       update-tet-database: Updates tc-ext-tools packages database        #
+#                                                                          #
+############################################################################
+
+#
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 2 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+#  Copyright (c) 2011 Sercan Arslan <arslanserc@gmail.com>
+#
+
+. /etc/init.d/tc-functions
+
+THIS=$(basename $0)
+TET_ROOT="$(dirname $0)/.."
+
+if [ $(id -u) = 0 ]; then
+     echo "${RED}Do not run $THIS as root!${NORMAL}"
+     exit 1
+fi
+
+if [ -f "$TET_ROOT/etc/tet.conf" ]; then
+     . "$TET_ROOT/etc/tet.conf"
+else
+     echo "${RED}${THIS}: default configuration file not found!${NORMAL}"
+     exit 1
+fi
+
+if [ -f "$HOME/.config/tet.conf" ]; then
+     . "$HOME/.config/tet.conf"
+else
+    echo "${RED}${THIS}: user configuration file not found!${NORMAL}"
+    exit 1
+fi
+
+if [ -z "$TET_PACKAGES_DATABASE" ]; then
+     echo "${RED}Check your configuration file!${NORMAL}"
+     exit 1
+fi
+
+echo -e "${BLUE}Checking if the packages database exists ... \c${NORMAL}"
+if [ ! -f "$TET_PACKAGES_DATABASE"/.packages ]; then
+       echo "${YELLOW}no${NORMAL}"
+       echo "${GREEN}Initializing the packages database${NORMAL}"
+       [ -d "$TET_PACKAGES_DATABASE" ] || mkdir -p "$TET_PACKAGES_DATABASE"
+       cd "$TET_PACKAGES_DATABASE"
+       touch .packages
+else
+       echo "${CYAN}yes${NORMAL}"
+fi
+
+echo "${BLUE}Updating the packages database ...${NORMAL}"
+
+cd "$TET_PACKAGES_DATABASE"
+
+for package in `cat .packages`
+do
+   . "$package"
+   if [ ! -d "$PACKAGE_ROOT" ]; then
+          echo "${RED}Removing the package ${YELLOW}${package}${NORMAL}"
+          sed -i -e "/${package}/d" .packages
+          rm -f "$package"
+   fi
+done
+
+PACKAGES=$(find $TET_PACKAGES -type f -name common -a -not -path "*/extensions/*/common" | sort)
+
+for package in $PACKAGES
+do
+   . "$package"
+
+   unset ADD UPDATE
+
+   if [ -f "$PACKAGE" ]; then
+        . "$PACKAGE"
+        if [ "$PACKAGE_VERSION" != "$VERSION" ]; then
+             UPDATE=y
+        fi
+   else
+        ADD=y
+        echo "$PACKAGE" >> .packages
+   fi
+
+if [ "$ADD" = "y" ]; then
+     echo "${GREEN}Adding the package ${YELLOW}${PACKAGE}${NORMAL}"
+elif [ "$UPDATE" = "y" ]; then
+     echo "${GREEN}Updating the package ${YELLOW}${PACKAGE}${NORMAL}"
+fi
+
+if [ -n "$ADD" -o -n "$UPDATE" ]; then
+   cat > "$TET_PACKAGES_DATABASE/$PACKAGE" << _EOF
+PACKAGE_ROOT="${package%/common}"
+PACKAGE_VERSION="$VERSION"
+_EOF
+fi
+done
+
+echo "${CYAN}All done!${NORMAL}"
+
+exit 0
+

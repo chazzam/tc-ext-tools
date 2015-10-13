@@ -1,0 +1,144 @@
+#!/bin/sh
+
+############################################################################
+#                                                                          #
+#            stripit: Strips the unnecessary debugging symbols             #
+#                                                                          #
+############################################################################
+
+#
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 2 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+#  Copyright (c) 2011 Sercan Arslan <arslanserc@gmail.com>
+#
+
+. /etc/init.d/tc-functions
+
+TET_ROOT="$(dirname $0)/.."
+
+if [ -f "$TET_ROOT/share/tet/functions.sh" ]; then
+     . "$TET_ROOT/share/tet/functions.sh"
+else
+     echo "${RED}$(basename $0):${BLUE} tc-ext-tools functions file not found!${NORMAL}"
+     exit 1
+fi
+
+if [ -n "$HAVE_TET_SPLIT" -a ! -f "$PACKAGE_SPLIT_STAMP" ]; then
+     echo "${ERROR_COLOR}You must split it first!${NORMAL}"
+     exit 1
+fi
+
+this_strip() {
+
+   echo "Setting the package extension executables list"
+   EXECUTABLES_LIST=$(sudo find "$PACKAGE_EXTENSION_BIN" -not -type d -exec file "{}" \; | grep "executable" | grep ELF | grep "not stripped" | cut -f1 -d:)
+
+   echo "Setting the package extension shared objects list"
+   SHARED_OBJECTS_LIST=$(sudo find "$PACKAGE_EXTENSION_BIN" -not -type d -exec file "{}" \; | grep "shared object" | grep ELF | grep "not stripped" | cut -f1 -d:)
+
+   echo -e "Checking if any executables to strip found ... \c"
+   if [ -n "$EXECUTABLES_LIST" ]; then
+        echo "yes"
+        echo "Processing the package extension executables list"
+        for EXECUTABLE in $EXECUTABLES_LIST
+        do
+            echo "Stripping the package extension executable ${EXECUTABLE#$PACKAGE_EXTENSION_BIN}" 
+            sudo strip --strip-unneeded "$EXECUTABLE" || return 1
+        done
+   else
+        echo "no"
+   fi
+
+   echo -e "Checking if any shared objects to strip found ... \c"
+   if [ -n "$SHARED_OBJECTS_LIST" ]; then
+        echo "yes"
+        echo "Processing the package extension shared objects list"
+        for SHARED_OBJECT in $SHARED_OBJECTS_LIST
+        do
+            echo "Stripping the package extension shared object ${SHARED_OBJECT#$PACKAGE_EXTENSION_BIN}" 
+            sudo strip -g "$SHARED_OBJECT" || return 1
+        done
+   else
+        echo "no"
+   fi
+
+   return 0
+
+}
+
+this_main() {
+
+   echo "---------------------------------------------------------------"
+   echo ""
+   echo "Stripping the package $PACKAGE extensions ..."
+   echo ""
+   echo "---------------------------------------------------------------"
+
+   for EXTENSION in $EXTENSIONS
+   do
+       set_extension
+
+       echo "---------------------------------------------------------------"
+       echo "Stripping the package extension $PACKAGE_EXTENSION_NAME"
+       echo "---------------------------------------------------------------"
+
+       echo -e "Checking if the package extension is splitted before ... \c"
+       if [ -d "$PACKAGE_EXTENSION_BIN" ]; then
+            echo "yes"
+       else
+            echo "no"
+            echo "---------------------------------------------------------------"
+            echo "Error! You must split it first."
+            echo "---------------------------------------------------------------"
+            return 1
+       fi
+
+       this_strip
+       if [ "$?" -gt 0 ]; then
+            echo "---------------------------------------------------------------"
+            echo "Error! Stripping the package extension $PACKAGE_EXTENSION_NAME failed"
+            echo "---------------------------------------------------------------"
+            return 1
+       else
+            echo "---------------------------------------------------------------"
+            echo "Stripping the package extension $PACKAGE_EXTENSION_NAME successful"
+            echo "---------------------------------------------------------------"
+       fi
+   done
+
+   echo "---------------------------------------------------------------"
+   echo ""
+   echo "Stripped the package $PACKAGE extensions successfully."
+   echo ""
+   echo "---------------------------------------------------------------"
+
+   return 0
+
+}
+
+[ -f "$PACKAGE_STRIP_STAMP" ] && sudo rm -f "$PACKAGE_STRIP_STAMP"
+
+echo -e "${MESSAGE_COLOR}Stripping the package ${MESSAGE_COLOR_H}$PACKAGE${MESSAGE_COLOR} extensions ... ${NORMAL}\c"
+this_main > "$PACKAGE_MESSAGE_LOG" 2>&1
+if [ "$?" -gt 0 ]; then
+     echo "${ERROR_COLOR}failed!${NORMAL}"
+     echo "${WARNING_COLOR}For details: ${WARNING_COLOR_H}buildit --print message${NORMAL}"
+     exit 1
+fi
+echo "${MESSAGE_COLOR_H}successful!${NORMAL}"
+
+touch "$PACKAGE_STRIP_STAMP"
+
+exit 0
+

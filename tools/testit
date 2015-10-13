@@ -1,0 +1,126 @@
+#!/bin/sh
+
+############################################################################
+#                                                                          #
+#                   testit: Tests the package extensions                   #
+#                                                                          #
+############################################################################
+
+#
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 2 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+#  Copyright (c) 2011-2012 Sercan Arslan <arslanserc@gmail.com>
+#
+
+. /etc/init.d/tc-functions
+
+TET_ROOT="$(dirname $0)/.."
+
+if [ -f "$TET_ROOT/share/tet/functions.sh" ]; then
+     . "$TET_ROOT/share/tet/functions.sh"
+else
+     echo "${RED}$(basename $0):${BLUE} tc-ext-tools functions file not found!${NORMAL}"
+     exit 1
+fi
+
+if [ -n "$HAVE_TET_CREATE" -a ! -f "$PACKAGE_CREATE_STAMP" ]; then
+     echo "${ERROR_COLOR}You must create it first!${NORMAL}"
+     exit 1
+fi
+
+this_copy(){
+
+  COPYDIR="$1"
+  cp -f "$PACKAGE_EXTENSION_TCZ" "$PACKAGE_EXTENSION_TCZ_MD5_TXT" "$COPYDIR" || return 1
+  if [ -f "$PACKAGE_EXTENSION_TCZ_DEP" ]; then
+       cp -f "$PACKAGE_EXTENSION_TCZ_DEP" "$COPYDIR" || return 1
+  fi
+
+}
+
+this_test() {
+
+   echo -e "Checking if the extension is installed ... \c"
+   if [ -f "/usr/local/tce.installed/${PACKAGE_EXTENSION_NAME}" ]; then
+       echo "yes"
+       echo "Copying the extension to tce upgrade directory"
+       [ -d "${TCEDIR}/optional/upgrade" ] || mkdir "${TCEDIR}/optional/upgrade"
+       this_copy "${TCEDIR}/optional/upgrade" || return 1
+       echo "You must reboot to test $PACKAGE_EXTENSION_NAME"
+   else
+       echo "no"
+       echo "Copying the extension to tce optional directory"
+       this_copy "${TCEDIR}/optional" || return 1
+       echo "To test it: tce-load -i $PACKAGE_EXTENSION_NAME"
+   fi
+
+   return 0
+
+}
+
+this_main() {
+
+   echo "---------------------------------------------------------------"
+   echo ""
+   echo "Testing the package $PACKAGE extensions ..."
+   echo ""
+   echo "---------------------------------------------------------------"
+
+   for EXTENSION in $EXTENSIONS
+   do
+       set_extension
+
+       echo "---------------------------------------------------------------"
+       echo "Testing the package extension $PACKAGE_EXTENSION_NAME"
+       echo "---------------------------------------------------------------"
+
+       this_test
+       if [ "$?" -gt 0 ]; then
+            echo "---------------------------------------------------------------"
+            echo "Error! testing the package extension $PACKAGE_EXTENSION_NAME failed"
+            echo "---------------------------------------------------------------"
+
+            return 1
+       else
+            echo "---------------------------------------------------------------"
+            echo "Testing the package extension $PACKAGE_EXTENSION_NAME successful"
+            echo "---------------------------------------------------------------"
+       fi
+   done
+
+   echo "---------------------------------------------------------------"
+   echo ""
+   echo "Tested the package $PACKAGE extensions successfully."
+   echo ""
+   echo "---------------------------------------------------------------"
+
+   return 0
+
+}
+
+[ -f "$PACKAGE_TEST_STAMP" ] && sudo rm -f "$PACKAGE_TEST_STAMP"
+
+echo -e "${MESSAGE_COLOR}Testing the package ${MESSAGE_COLOR_H}$PACKAGE${MESSAGE_COLOR} extensions ... ${NORMAL}\c"
+this_main > "$PACKAGE_MESSAGE_LOG" 2>&1
+if [ "$?" -gt 0 ]; then
+     echo "${ERROR_COLOR}failed!${NORMAL}"
+     echo "${WARNING_COLOR}For details: ${WARNING_COLOR_H}buildit --print message${NORMAL}"
+     exit 1
+fi
+echo "${MESSAGE_COLOR_H}successful!${NORMAL}"
+
+touch "$PACKAGE_TEST_STAMP"
+
+exit 0
+

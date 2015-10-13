@@ -1,0 +1,98 @@
+#!/bin/sh
+
+############################################################################
+#                                                                          #
+#                  unpackit: Unpacks the package source                    #
+#                                                                          #
+############################################################################
+
+#
+#  This program is free software; you can redistribute it and/or modify
+#  it under the terms of the GNU General Public License as published by
+#  the Free Software Foundation; either version 2 of the License, or
+#  (at your option) any later version.
+#
+#  This program is distributed in the hope that it will be useful,
+#  but WITHOUT ANY WARRANTY; without even the implied warranty of
+#  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#  GNU General Public License for more details.
+#
+#  You should have received a copy of the GNU General Public License
+#  along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+#  Copyright (c) 2011 Sercan Arslan <arslanserc@gmail.com>
+#
+
+. /etc/init.d/tc-functions
+
+TET_ROOT="$(dirname $0)/.."
+
+if [ -f "$TET_ROOT/share/tet/functions.sh" ]; then
+     . "$TET_ROOT/share/tet/functions.sh"
+else
+     echo "${RED}$(basename $0):${BLUE} tc-ext-tools functions file not found!${NORMAL}"
+     exit 1
+fi
+
+if [ -n "$HAVE_TET_DOWNLOAD" -a ! -f "$PACKAGE_DOWNLOAD_STAMP" ] && [ -n "$HAVE_TET_CONVERT" -a ! -f "$PACKAGE_CONVERT_STAMP" ]; then
+     echo "${ERROR_COLOR}You must download it first!${NORMAL}"
+     exit 1
+fi
+
+this_main() {
+
+   echo "---------------------------------------------------------------"
+   echo ""
+   echo "Unpacking the package $PACKAGE source $PACKAGE_SOURCE_NAME ..."
+   echo ""
+   echo "---------------------------------------------------------------"
+
+   echo "Cleaning the package src temporary directory"
+   [ -d "$PACKAGE_SRC_TEMP" ] && sudo rm -rf "$PACKAGE_SRC_TEMP"
+   mkdir -p "$PACKAGE_SRC_TEMP" || return 1
+
+   if [ -f "$PACKAGE_SOURCE_CONV" ] || [ "$PACKAGE_SOURCE_TYPE" = "tarbz2" ] || [ "$PACKAGE_SOURCE_TYPE" = "targz" ] ||
+      [ "$PACKAGE_SOURCE_TYPE" = "tgz" ] || [ "$PACKAGE_SOURCE_TYPE" = "tbz2" ] || [ "$PACKAGE_SOURCE_TYPE" = "tarxz" ] ||
+      [ "$PACKAGE_SOURCE_TYPE" = "txz" ] || [ "$PACKAGE_SOURCE_TYPE" = "tarlzma" ] || [ "$PACKAGE_SOURCE_TYPE" = "tar" ]; then
+        echo "---------------------------------------------------------------"
+        echo "Extracting the package source by using tar"
+        echo "---------------------------------------------------------------"
+        tar -C "$PACKAGE_SRC_TEMP" -xvf "$PACKAGE_SOURCE" || return 1
+   elif [ "$PACKAGE_SOURCE_TYPE" = "zip" ]; then
+        echo "---------------------------------------------------------------"
+        echo "Unzipping the package source"
+        echo "---------------------------------------------------------------"
+        unzip "$PACKAGE_SOURCE" -d "$PACKAGE_SRC_TEMP" || return 1
+   elif [ "$PACKAGE_SOURCE_TYPE" = "custom" ]; then
+        echo "---------------------------------------------------------------"
+        echo "Executing the package build unpack function"
+        echo "---------------------------------------------------------------"
+        cd "$PACKAGE_SRC_TEMP"
+        build_unpack || return 1
+   fi
+
+   echo "---------------------------------------------------------------"
+   echo ""
+   echo "Unpacked the package $PACKAGE source $PACKAGE_SOURCE_NAME successfully."
+   echo ""
+   echo "---------------------------------------------------------------"
+
+   return 0
+
+}
+
+[ -f "$PACKAGE_UNPACK_STAMP" ] && sudo rm -f "$PACKAGE_UNPACK_STAMP"
+
+echo -e "${MESSAGE_COLOR}Unpacking the package ${MESSAGE_COLOR_H}$PACKAGE${MESSAGE_COLOR} source ... ${NORMAL}\c"
+this_main > "$PACKAGE_MESSAGE_LOG" 2>&1
+if [ "$?" -gt 0 ]; then
+     echo "${ERROR_COLOR}failed!${NORMAL}"
+     echo "${WARNING_COLOR}For details: ${WARNING_COLOR_H}buildit --print message${NORMAL}"
+     exit 1
+fi
+echo "${MESSAGE_COLOR_H}successful!${NORMAL}"
+
+touch "$PACKAGE_UNPACK_STAMP"
+
+exit 0
+
