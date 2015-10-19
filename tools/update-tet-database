@@ -77,7 +77,7 @@ do
    fi
 done
 
-PACKAGES=$(find $TET_PACKAGES -type f -name common -a -not -path "*/extensions/*/common" | sort)
+PACKAGES=$(find -L $TET_PACKAGES -type f -name common -a -not -path "*/extensions/*/common" | sort)
 
 for package in $PACKAGES
 do
