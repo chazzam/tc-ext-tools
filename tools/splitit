@@ -108,7 +108,8 @@ this_split() {
    X_LIST="${PACKAGE_EXTENSION_BIN_TEMP}/x-install.list"
    touch "$X_LIST"
    if [ -n "$EXCLUDE_PATHS" ]; then
-        sudo find $EXCLUDE_PATHS -not -type d >> "$X_LIST" || return 1
+        # Don't die if an excluded file isn't found.
+        sudo find $EXCLUDE_PATHS -not -type d >> "$X_LIST"
    fi
    cat "$X_LIST"
 
