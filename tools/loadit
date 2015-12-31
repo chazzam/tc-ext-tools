@@ -43,6 +43,10 @@ this_load() {
         EXTENSION="${EXTENSION#*::}"
    fi
 
+   if [ "${TC_VERSION%%.*}" = "6" ]; then
+     EXTENSION="${EXTENSION/squashfs-tools-4.x/squashfs-tools}"
+     EXTENSION="${EXTENSION/openssl-1.0.0/openssl}"
+   fi
    EXTENSION_TCZ="${EXTENSION%.tcz}.tcz"
    EXTENSION_NAME="${EXTENSION_TCZ%.tcz}"
 
