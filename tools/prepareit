@@ -101,6 +101,25 @@ this_patch() {
 
 }
 
+this_cfg_symvers() {
+  if [ ! -f ".config" ]; then
+    wget "$KERNEL_MIRROR/$KERNEL_CONFIG" -O .config;
+  fi;
+  if [ ! -f "Module.symvers" ]; then
+    if [ -f $LINUX_SRC/Module.symvers ]; then
+      cp -f $LINUX_SRC/Module.symvers .;
+    elif [ -f $LINUX_SRC/$KERNEL_SYMVERS ]; then
+      cp -f $LINUX_SRC/$KERNEL_SYMVERS .;
+      gunzip $KERNEL_SYMVERS 2>&1;
+      mv ${KERNEL_SYMVERS%.gz} Module.symvers;
+    else
+      wget "$KERNEL_MIRROR/$KERNEL_SYMVERS";
+      gunzip $KERNEL_SYMVERS 2>&1;
+      mv ${KERNEL_SYMVERS%.gz} Module.symvers;
+    fi;
+  fi;
+}
+
 this_prepare() {
 
    [ -d "$TET_STORAGE_LINUX" ] || mkdir -p "$TET_STORAGE_LINUX"
@@ -141,6 +160,8 @@ this_prepare() {
 
    echo "Configuring the linux source"
    cp -f "$LINUX_CONFIG" .config
+
+   this_cfg_symvers;
 
    if [ "$KERNEL_ARCH" = x86_64 ]; then
         make ARCH="$KERNEL_ARCH" CROSS_COMPILE="$CROSS_COMPILE" oldconfig || return 1

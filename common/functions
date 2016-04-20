@@ -303,7 +303,8 @@ set_date() {
 # sets the tcl system variables
 set_tcl_system() {
 
-   TCMIRROR=http://distro.ibiblio.org/pub/linux/distributions/tinycorelinux/
+   #TCMIRROR=http://distro.ibiblio.org/pub/linux/distributions/tinycorelinux/
+   read TCMIRROR < /opt/tcemirror
    TCVER="$(version | cut -f1 -d.)".x
    ARCH=x86
    KERNEL=$(uname -r)
