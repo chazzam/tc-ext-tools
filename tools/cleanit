@@ -71,6 +71,11 @@ this_main() {
         sudo rm -f "$PACKAGE_DOWNLOAD_STAMP"
    fi
 
+   if [ ! -f "$PACKAGE_SOURCE_CONV" -a -f "$PACKAGE_DOWNLOAD_STAMP" ]; then
+      echo "Removing package download stamp"
+      sudo rm -f "$PACKAGE_DOWNLOAD_STAMP"
+   fi
+
    echo "---------------------------------------------------------------"
    echo ""
    echo "Cleaned the package $PACKAGE successfully."
