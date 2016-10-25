@@ -42,6 +42,9 @@ this_load() {
    else
         EXTENSION="${EXTENSION#*::}"
    fi
+   if [ -f /.dockerenv ]; then
+        COMMAND="cp2fs"
+   fi
 
    if [ "${TC_VERSION%%.*}" = "4" ]; then
      local ext="${EXTENSION%.tcz}@@"
