@@ -197,6 +197,7 @@ this_main() {
 
    echo "Creating the required symlinks in the root file system"
    [ -d /usr/src ] || sudo mkdir -p /usr/src
+   [ -d /lib/modules/${KERNEL} ] || sudo mkdir -p /lib/modules/${KERNEL}
    sudo ln -sf "$LINUX_BUILD" /usr/src/linux || return 1
    sudo ln -sf "$LINUX_BUILD" /lib/modules/${KERNEL}/build || return 1
 
