@@ -183,7 +183,7 @@ build_it() {
    set_date; SECONDS_BEFORE="$SECONDS"
    echo "${MESSAGE_COLOR}Building the package ${MESSAGE_COLOR_H}$PACKAGE${MESSAGE_COLOR} started at ${MESSAGE_COLOR_H}$TIME${NORMAL}"
    clean_it
-   build_rules
+   build_rules || exit 1
    set_date; SECONDS_AFTER="$SECONDS"
    SECONDS_ELAPSED=`expr $SECONDS_AFTER - $SECONDS_BEFORE`
    echo "${MESSAGE_COLOR}Building the package ${MESSAGE_COLOR_H}$PACKAGE${MESSAGE_COLOR} finished at ${MESSAGE_COLOR_H}$TIME${MESSAGE_COLOR} in ${MESSAGE_COLOR_H}${SECONDS_ELAPSED}${MESSAGE_COLOR} seconds${NORMAL}"
@@ -272,7 +272,7 @@ tet_install() {
 }
 
 tet_split() {
-   buildit --split || exit 
+   buildit --split || exit 1
 }
 
 tet_strip() {
