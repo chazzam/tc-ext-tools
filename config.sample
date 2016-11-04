@@ -14,6 +14,9 @@ TET_PACKAGES="${HOME}/tc-ext-tools/packages"
 # tc-ext-tools storage directory
 TET_STORAGE="${HOME}/tc-ext-tools/storage"
 
+# extra extensions storage directory
+EXTRA_STORAGE="${HOME}/tc-deliver/packages"
+
 # tc-ext-tools text editor
 TET_EDITOR="editor"
 

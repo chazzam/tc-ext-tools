@@ -34,6 +34,17 @@ else
         exit 1
 fi
 
+load_ext() {
+   TCE_LOAD_ARGS=""
+   [ "$COMMAND" = "cp2fs" ] && TCE_LOAD_ARGS="$TCE_LOAD_ARGS -c"
+   FULLPATH_EXTENSION_TCZ="$TCEDIR/optional/$EXTENSION_TCZ"
+
+   if [ -f "$EXTRA_STORAGE/$EXTENSION_TCZ" ]; then
+      FULLPATH_EXTENSION_TCZ="$EXTRA_STORAGE/$EXTENSION_TCZ"
+   fi
+   tce-load -i $TCE_LOAD_ARGS "$FULLPATH_EXTENSION_TCZ" || return 1
+}
+
 this_load() {
 
    COMMAND="${EXTENSION%%::*}"
@@ -81,10 +92,7 @@ this_load() {
    fi
 
    echo "Loading the extension $EXTENSION_NAME"
-   case "$COMMAND" in
-       cp2fs) tce-load -i -c "$EXTENSION_TCZ" || return 1 ;;
-       *) tce-load -i "$EXTENSION_TCZ" || return 1 ;;
-   esac
+   load_ext || return 1
 
    return 0
 
@@ -129,6 +137,7 @@ this_main() {
 }
 
 [ -f "$PACKAGE_LOAD_STAMP" ] && sudo rm -f "$PACKAGE_LOAD_STAMP"
+[ -d "$EXTRA_STORAGE" ] || mkdir -p "$EXTRA_STORAGE"
 
 echo -e "${MESSAGE_COLOR}Loading the package ${MESSAGE_COLOR_H}$PACKAGE${MESSAGE_COLOR} build dependencies ... ${NORMAL}\c"
 this_main > "$PACKAGE_MESSAGE_LOG" 2>&1
