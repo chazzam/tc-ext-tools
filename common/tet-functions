@@ -294,7 +294,7 @@ tetinfo() {
    done
 
    cat common
-   echo "EXTENSIONS=$EXTENSIONS"
+   echo "EXTENSIONS='$EXTENSIONS'"
 
    cd - > /dev/null
 }
