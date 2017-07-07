@@ -42,7 +42,9 @@ load_ext() {
    if [ -f "$EXTRA_STORAGE/$EXTENSION_TCZ" ]; then
       FULLPATH_EXTENSION_TCZ="$EXTRA_STORAGE/$EXTENSION_TCZ"
    fi
+   echo "0" > /tmp/appserr
    tce-load -i $TCE_LOAD_ARGS "$FULLPATH_EXTENSION_TCZ" || return 1
+   [ -z "$(grep 1 /tmp/appserr)" ] || return 1
 }
 
 this_load() {
@@ -83,12 +85,14 @@ this_load() {
    fi
 
    echo -e "Checking if the extension $EXTENSION_NAME exists ... \c"
-   if [ -f "$TCEDIR/optional/$EXTENSION_TCZ" ]; then
+   if [ -f "$TCEDIR/optional/$EXTENSION_TCZ" -o -L "$TCEDIR/optional/$EXTENSION_TCZ" ]; then
         echo "yes"
    else
         echo "no"
         echo "Downloading the extension $EXTENSION_NAME"
+        echo "0" > /tmp/appserr
         tce-load -w "$EXTENSION_TCZ" || return 1
+        [ -z "$(grep 1 /tmp/appserr)" ] || return 1
    fi
 
    echo "Loading the extension $EXTENSION_NAME"
