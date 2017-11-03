@@ -42,6 +42,7 @@ load_ext() {
    if [ -f "$EXTRA_STORAGE/$EXTENSION_TCZ" ]; then
       FULLPATH_EXTENSION_TCZ="$EXTRA_STORAGE/$EXTENSION_TCZ"
    fi
+   tce-load -i $TCE_LOAD_ARGS "${EXTENSION_NAME}" 2>/dev/null
    echo "0" > /tmp/appserr
    tce-load -i $TCE_LOAD_ARGS "$FULLPATH_EXTENSION_TCZ" || return 1
    [ -z "$(grep 1 /tmp/appserr)" ] || return 1
@@ -71,7 +72,7 @@ this_load() {
      EXTENSION="${EXTENSION/openssl-1.0.0/openssl}"
    fi
    EXTENSION_TCZ="${EXTENSION%.tcz}.tcz"
-   EXTENSION_NAME="${EXTENSION_TCZ%.tcz}"
+   EXTENSION_NAME="${EXTENSION_TCZ%%.tcz}"
 
    echo -e "Checking if the extension $EXTENSION_NAME is installed ... \c"
    if [ -e "/usr/local/tce.installed/$EXTENSION_NAME" ]; then
