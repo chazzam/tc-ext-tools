@@ -159,6 +159,8 @@ this_main() {
 
              echo "Checking out git repository $SOURCE"
              git $GIT_FLAGS "$SOURCE" "$PACKAGE_SOURCE_TOPDIR" || return 1
+             ( cd "$PACKAGE_SOURCE_TOPDIR";
+               git describe --tags --long --always --dirty > version-git.txt ) || return 1
         fi
 
         echo "Creating a tarball from the source"
