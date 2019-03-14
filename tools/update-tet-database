@@ -81,7 +81,7 @@ PACKAGES=$(find -L $TET_PACKAGES -type f -name common -a -not -path "*/extension
 
 for package in $PACKAGES
 do
-   . ./"$package"
+   . "$package"
 
    unset ADD UPDATE
 
