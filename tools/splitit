@@ -116,7 +116,7 @@ this_split() {
    echo "---------------------------------------------------------------"
    echo "Creating the package extension files tarball using the files to include and the files to exclude lists"
    echo "---------------------------------------------------------------"
-   sudo tar -T "$LIST" -X "$X_LIST" -cvpzf "$PACKAGE_EXTENSION_BIN_TEMP/pkg.tar.gz" || return 1
+   sudo tar -cf "$PACKAGE_EXTENSION_BIN_TEMP/pkg.tar.gz" -T "$LIST" -X "$X_LIST" -vpz || return 1
 
    echo "---------------------------------------------------------------"
    echo "Cleaning the package extension bin directory"
