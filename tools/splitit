@@ -112,11 +112,13 @@ this_split() {
         sudo find $EXCLUDE_PATHS -not -type d >> "$X_LIST"
    fi
    cat "$X_LIST"
+   X_LIST_ARG_FLAGS=""
+   [ $(wc -c < "$X_LIST") != "0" ] && X_LIST_ARG_FLAGS="-X $X_LIST"
 
    echo "---------------------------------------------------------------"
    echo "Creating the package extension files tarball using the files to include and the files to exclude lists"
    echo "---------------------------------------------------------------"
-   sudo tar -cf "$PACKAGE_EXTENSION_BIN_TEMP/pkg.tar.gz" -T "$LIST" -X "$X_LIST" -vpz || return 1
+   sudo tar -cvpzf "$PACKAGE_EXTENSION_BIN_TEMP/pkg.tar.gz" -C "$PACKAGE_INSTALL_ROOT" $X_LIST_ARG_FLAGS -T "$LIST" || return 1
 
    echo "---------------------------------------------------------------"
    echo "Cleaning the package extension bin directory"
